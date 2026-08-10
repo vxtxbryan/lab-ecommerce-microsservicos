@@ -23,6 +23,16 @@ services:
     networks:
       - lab-network
 
+  users:
+    build: ./services/users
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./services/users:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8002 --reload
+    networks:
+      - lab-network
+
 networks:
   lab-network:
     driver: bridge
