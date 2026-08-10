@@ -1,2 +1,28 @@
 services:
-  we
+  products:
+    build: ./services/products
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/products:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - lab-network
+
+  orders:
+    build: ./services/orders
+    ports:
+      - "8001:8001"
+    environment:
+      - PRODUCTS_SERVICE_URL=http://products:8000
+    volumes:
+      - ./services/orders:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    depends_on:
+      - products
+    networks:
+      - lab-network
+
+networks:
+  lab-network:
+    driver: bridge
