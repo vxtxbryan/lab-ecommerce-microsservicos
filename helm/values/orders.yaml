@@ -1,0 +1,7 @@
+image:
+  repository: 271251458777.dkr.ecr.us-east-1.amazonaws.com/ecommerce-microsservicos-orders
+containerPort: 8001
+env:
+  PRODUCTS_SERVICE_URL: http://products
+  USERS_SERVICE_URL: http://users
+  PAYMENTS_SERVICE_URL: http://payments
