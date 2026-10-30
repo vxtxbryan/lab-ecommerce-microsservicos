@@ -13,5 +13,5 @@ variable "project_name" {
 variable "cluster_version" {
   description = "Versao do Kubernetes no EKS"
   type        = string
-  default     = "1.30"
+  default     = "1.33"
 }
