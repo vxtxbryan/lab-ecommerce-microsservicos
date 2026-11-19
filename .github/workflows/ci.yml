@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  PROJECT_NAME: ecommerce-microsservicos
+
+jobs:
+  build-scan-push:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # necessario para o OIDC com a AWS
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [products, orders, users, payments]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build da imagem
+        run: |
+          docker build \
+            -t local/${{ matrix.service }}:${{ github.sha }} \
+            services/${{ matrix.service }}
+
+      # Pinada pelo hash do commit (v0.36.0): em 2026 tags desta action
+      # foram comprometidos em um ataque a cadeia de suprimentos.
+      - name: Scan de vulnerabilidades (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: local/${{ matrix.service }}:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      # Daqui para baixo so roda em push na main (nao em pull requests)
+      - name: Autenticar na AWS (OIDC)
+        if: github.event_name != 'pull_request'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login no ECR
+        if: github.event_name != 'pull_request'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag e push para o ECR
+        if: github.event_name != 'pull_request'
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          REPO="${REGISTRY}/${PROJECT_NAME}-${{ matrix.service }}"
+          docker tag local/${{ matrix.service }}:${{ github.sha }} "${REPO}:${{ github.sha }}"
+          docker tag local/${{ matrix.service }}:${{ github.sha }} "${REPO}:latest"
+          docker push "${REPO}:${{ github.sha }}"
+          docker push "${REPO}:latest"
