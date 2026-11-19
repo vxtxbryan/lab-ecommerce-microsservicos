@@ -7,6 +7,8 @@
 
 locals {
   github_repo = "vxtxbryan/lab-ecommerce-microsservicos"
+  # O GitHub inclui os IDs numericos do dono e do repo no claim "sub"
+  github_sub_repo = "vxtxbryan@100298866/lab-ecommerce-microsservicos@1327047271"
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
@@ -41,7 +43,7 @@ data "aws_iam_policy_document" "github_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${local.github_repo}:ref:refs/heads/main"]
+      values   = ["repo:${local.github_sub_repo}:ref:refs/heads/main"]
     }
   }
 }
