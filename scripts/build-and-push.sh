@@ -1,13 +1,25 @@
 #!/bin/bash
-set -e
+# Build e push manual das imagens para o ECR.
+# Normalmente quem faz isso e a CI; use este script para o primeiro envio
+# ou para testes locais.
+#
+# Variaveis opcionais:
+#   AWS_REGION   (padrao: us-east-1)
+#   PROJECT_NAME (padrao: ecommerce-microsservicos)
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
-AWS_REGION="us-east-1"
-AWS_ACCOUNT_ID="271251458777"
+AWS_REGION="${AWS_REGION:-us-east-1}"
+PROJECT_NAME="${PROJECT_NAME:-ecommerce-microsservicos}"
+
+# O ID da conta vem das credenciais em uso (nada hardcoded)
+AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-PROJECT_NAME="ecommerce-microsservicos"
+
+# Tag rastreavel: SHA curto do commit (ou "manual" fora de um repositorio git)
+GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo manual)"
 
 SERVICES=("products" "orders" "users" "payments")
 
@@ -30,6 +42,7 @@ push_with_retry() {
   return 1
 }
 
+echo "Conta AWS: ${AWS_ACCOUNT_ID} | Regiao: ${AWS_REGION} | Tag: ${GIT_SHA}"
 echo "Fazendo login no ECR..."
 aws ecr get-login-password --region "$AWS_REGION" | \
   docker login --username AWS --password-stdin "$ECR_REGISTRY"
@@ -39,18 +52,20 @@ for SERVICE in "${SERVICES[@]}"; do
   echo "=== Processando $SERVICE ==="
 
   IMAGE_NAME="${PROJECT_NAME}-${SERVICE}"
-  FULL_IMAGE="${ECR_REGISTRY}/${IMAGE_NAME}:latest"
+  REPO="${ECR_REGISTRY}/${IMAGE_NAME}"
 
   echo "Buildando imagem..."
-  docker build -t "$IMAGE_NAME" "./services/${SERVICE}"
+  docker build -t "${IMAGE_NAME}:${GIT_SHA}" "./services/${SERVICE}"
 
-  echo "Aplicando tag para o ECR..."
-  docker tag "${IMAGE_NAME}:latest" "$FULL_IMAGE"
+  echo "Aplicando tags para o ECR..."
+  docker tag "${IMAGE_NAME}:${GIT_SHA}" "${REPO}:${GIT_SHA}"
+  docker tag "${IMAGE_NAME}:${GIT_SHA}" "${REPO}:latest"
 
   echo "Enviando para o ECR..."
-  push_with_retry "$FULL_IMAGE"
+  push_with_retry "${REPO}:${GIT_SHA}"
+  push_with_retry "${REPO}:latest"
 
-  echo "$SERVICE concluido: $FULL_IMAGE"
+  echo "$SERVICE concluido: ${REPO}:${GIT_SHA}"
 done
 
 echo ""

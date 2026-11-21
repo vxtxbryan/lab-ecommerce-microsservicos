@@ -4,7 +4,8 @@
 *.tfstate.*
 *.tfvars
 crash.log
-
+# config local do backend (contem o nome do SEU bucket)
+infra/terraform/backend.hcl
 
 # Python
 __pycache__/

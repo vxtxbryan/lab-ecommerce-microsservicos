@@ -6,12 +6,34 @@
 ########################################################################
 
 locals {
-  github_repo = "vxtxbryan/lab-ecommerce-microsservicos"
+  github_owner = split("/", var.github_repo)[0]
+  github_name  = split("/", var.github_repo)[1]
+
   # O GitHub inclui os IDs numericos do dono e do repo no claim "sub"
-  github_sub_repo = "vxtxbryan@100298866/lab-ecommerce-microsservicos@1327047271"
+  github_sub_repo = "${local.github_owner}@${var.github_owner_id}/${local.github_name}@${var.github_repo_id}"
+
+  github_oidc_provider_arn = (
+    var.create_github_oidc_provider
+    ? aws_iam_openid_connect_provider.github[0].arn
+    : data.aws_iam_openid_connect_provider.github[0].arn
+  )
+}
+
+# O provedor passou a ter count: preserva o recurso que ja existe no state
+moved {
+  from = aws_iam_openid_connect_provider.github
+  to   = aws_iam_openid_connect_provider.github[0]
+}
+
+# Conta que ja tem o provedor do GitHub: reaproveita em vez de criar
+data "aws_iam_openid_connect_provider" "github" {
+  count = var.create_github_oidc_provider ? 0 : 1
+  url   = "https://token.actions.githubusercontent.com"
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
+  count = var.create_github_oidc_provider ? 1 : 0
+
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
 
@@ -30,7 +52,7 @@ data "aws_iam_policy_document" "github_trust" {
 
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [local.github_oidc_provider_arn]
     }
 
     condition {

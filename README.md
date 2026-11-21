@@ -6,7 +6,7 @@ Laboratório prático de **cloud e DevOps**: quatro microsserviços de um e-comm
 
 O objetivo é servir como material de estudo e como referência de um fluxo completo, do código até o cluster. Se você quer aprender como as peças se encaixam, ou precisa de um ponto de partida para um projeto parecido, pode clonar, rodar e adaptar.
 
-> **Aviso de custo:** subir o cluster na AWS **gera cobrança** (cerca de **US$ 0,20 por hora**). O passo a passo abaixo mostra como rodar tudo localmente de graça e como desligar a infraestrutura na nuvem assim que terminar. Veja a seção [Custos](#custos).
+> **Aviso de custo:** subir o cluster na AWS **gera cobrança** (cerca de **US$ 0,32 por hora** nesta fase, e mais conforme a plataforma crescer). O passo a passo abaixo mostra como rodar tudo localmente de graça e como desligar a infraestrutura na nuvem assim que terminar. Veja a seção [Custos](#custos).
 
 ---
 
@@ -51,8 +51,8 @@ O objetivo é servir como material de estudo e como referência de um fluxo comp
 | Área | Ferramenta | Observação |
 |---|---|---|
 | Nuvem | AWS | Região `us-east-1` |
-| Orquestração | Amazon EKS (Kubernetes 1.33) | 2 nodes `t3.medium` |
-| IaC | Terraform ≥ 1.10 | Provider AWS `~> 5.0`; módulos `terraform-aws-modules/vpc` e `eks` |
+| Orquestração | Amazon EKS (Kubernetes 1.35) | Node group de sistema: 2 nodes `t3.large` em subnets privadas |
+| IaC | Terraform ≥ 1.10 | Provider AWS `~> 5.0`; módulos `terraform-aws-modules/vpc` e `eks`, mais um módulo local de IRSA (`modules/irsa`) |
 | Deploy | Helm 3 | Chart genérico + values por serviço |
 | Registro de imagens | Amazon ECR | 1 repositório por serviço, scan no push |
 | CI | GitHub Actions | Build, Trivy, push, OIDC |
@@ -71,13 +71,15 @@ flowchart LR
     subgraph AWS["AWS - us-east-1"]
         ecr["Amazon ECR<br/>4 repositórios"]
         s3["Bucket S3<br/>state do Terraform"]
-        cp["EKS control plane<br/>Kubernetes 1.33"]
+        cp["EKS control plane<br/>Kubernetes 1.35"]
         subgraph VPC["VPC 10.0.0.0/16 - 2 zonas de disponibilidade"]
             subgraph PUB["Subnets públicas"]
-                n1["Node t3.medium<br/>zona A"]
-                n2["Node t3.medium<br/>zona B"]
+                nat["NAT Gateway<br/>único, compartilhado"]
             end
-            priv["Subnets privadas<br/>reservadas, ainda sem uso"]
+            subgraph PRIV["Subnets privadas /20"]
+                n1["Node t3.large<br/>zona A"]
+                n2["Node t3.large<br/>zona B"]
+            end
         end
     end
 
@@ -86,6 +88,8 @@ flowchart LR
     ecr -.->|"pull das imagens"| n2
     cp --- n1
     cp --- n2
+    n1 -.->|"saída para a internet"| nat
+    n2 -.->|"saída para a internet"| nat
 ```
 
 ### Como os serviços conversam
@@ -147,11 +151,14 @@ Se algum serviço estiver fora do ar, o `orders` responde `503`. Usuário ou pro
 │       ├── payments.yaml
 │       └── orders.yaml
 ├── infra/terraform/
-│   ├── backend.tf               # State remoto no S3
-│   ├── provider.tf              # Versões do Terraform e do provider AWS
-│   ├── variables.tf             # Região, nome do projeto, versão do Kubernetes
-│   ├── vpc.tf                   # VPC, subnets públicas e privadas
-│   ├── eks.tf                   # Cluster EKS e node group
+│   ├── backend.tf               # State remoto no S3 (bucket informado no init)
+│   ├── backend.hcl.example      # Modelo do arquivo com o nome do seu bucket
+│   ├── provider.tf              # Versões, provider AWS e default_tags
+│   ├── variables.tf             # Região, versão do K8s, nodes, GitHub
+│   ├── vpc.tf                   # VPC, subnets públicas/privadas e NAT
+│   ├── eks.tf                   # Cluster EKS, addons e node group de sistema
+│   ├── addons.tf                # Addon EBS CSI (com IRSA)
+│   ├── modules/irsa/            # Módulo reutilizável: role IAM por service account
 │   ├── ecr.tf                   # Repositórios ECR e política de retenção
 │   ├── oidc.tf                  # Role que o GitHub Actions assume (OIDC)
 │   └── outputs.tf
@@ -199,7 +206,7 @@ Formas de pagamento aceitas: `credit_card`, `pix` e `boleto`.
 | Conta AWS | Criar a infraestrutura | com permissão administrativa para o laboratório |
 | AWS CLI v2 | Falar com a AWS | 2.x |
 | Terraform | Criar a infraestrutura | **1.10 ou superior** (o backend usa `use_lockfile`) |
-| kubectl | Operar o cluster | compatível com o Kubernetes 1.33 |
+| kubectl | Operar o cluster | compatível com o Kubernetes 1.35 |
 | Helm | Instalar os serviços | 3.x |
 
 > **No Windows:** use o **WSL 2** (Ubuntu) e rode todos os comandos de dentro dele. No Docker Desktop, ative a integração com a distribuição WSL em *Settings → Resources → WSL integration*. Este projeto foi desenvolvido assim.
@@ -254,19 +261,19 @@ aws s3api put-public-access-block --bucket "$TF_BUCKET" \
   BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
 ```
 
-E aponte o Terraform para ele:
+E informe o bucket ao Terraform. O nome **não fica no código**: ele vai em um arquivo local, ignorado pelo Git:
 
 ```bash
-sed -i "s/ecommerce-microsservicos-tfstate-6250d96a/$TF_BUCKET/" infra/terraform/backend.tf
+echo "bucket = \"$TF_BUCKET\"" > infra/terraform/backend.hcl
 ```
 
-> Se preferir só experimentar sem bucket, apague o arquivo `infra/terraform/backend.tf`. O state passará a ficar em um arquivo local (`terraform.tfstate`). Isso serve para estudo, mas não para trabalho em equipe. **Nunca faça commit de arquivos de state**: o `.gitignore` já os ignora.
+> Se preferir só experimentar sem bucket, apague o arquivo `infra/terraform/backend.tf` (e pule o `-backend-config` do passo 3). O state passará a ficar em um arquivo local (`terraform.tfstate`). Isso serve para estudo, mas não para trabalho em equipe. **Nunca faça commit de arquivos de state**: o `.gitignore` já os ignora.
 
-**2.3 Troque o ID de conta AWS do autor pelo seu.** O ID `271251458777` aparece nos values do Helm e no script de push:
+**2.3 Troque o ID de conta AWS do autor pelo seu nos values do Helm.** O script de push já descobre a conta sozinho (`aws sts get-caller-identity`); o ID `271251458777` só permanece em `helm/values/*.yaml`:
 
 ```bash
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-sed -i "s/271251458777/$AWS_ACCOUNT_ID/g" scripts/build-and-push.sh helm/values/*.yaml
+sed -i "s/271251458777/$AWS_ACCOUNT_ID/g" helm/values/*.yaml
 ```
 
 **2.4 Decida se vai usar a CI do GitHub Actions.** O arquivo `infra/terraform/oidc.tf` cria a role usada pela pipeline e vem configurado para o repositório do autor.
@@ -277,7 +284,7 @@ sed -i "s/271251458777/$AWS_ACCOUNT_ID/g" scripts/build-and-push.sh helm/values/
   rm infra/terraform/oidc.tf
   ```
 
-- **Vai usar a CI (no seu fork):** veja a seção [Pipeline de CI](#pipeline-de-ci), que explica o que ajustar. Se a sua conta **já tiver** um provedor OIDC do GitHub (`aws iam list-open-id-connect-providers`), o `apply` falha com `EntityAlreadyExists`, e nesse caso será preciso adaptar o `oidc.tf`.
+- **Vai usar a CI (no seu fork):** veja a seção [Pipeline de CI](#pipeline-de-ci), que explica o que ajustar. Se a sua conta **já tiver** um provedor OIDC do GitHub (`aws iam list-open-id-connect-providers`), use `-var create_github_oidc_provider=false` no `plan`/`apply` para reaproveitá-lo.
 
 ### 3. Criar a infraestrutura com Terraform
 
@@ -287,14 +294,14 @@ Os arquivos `.tf` ficam em `infra/terraform`. Rodar o `terraform` na raiz do rep
 
 ```bash
 cd infra/terraform
-terraform init
+terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 ```
 
 Leia o plano e confirme com `yes`. A criação leva de **15 a 20 minutos**, e a maior parte é a espera do cluster EKS e do node group. Se a conexão cair, rode `terraform apply` de novo, que ele continua de onde parou. Ao final, volte para a raiz com `cd ../..`.
 
-O que é criado: 1 VPC, 4 subnets, o cluster EKS e o node group, 4 repositórios ECR (e a role OIDC, se você manteve o `oidc.tf`).
+O que é criado: 1 VPC com 4 subnets e 1 NAT Gateway, o cluster EKS com addons (`vpc-cni`, `kube-proxy`, `coredns`, `aws-ebs-csi-driver`) e o node group de sistema, 4 repositórios ECR (e a role OIDC, se você manteve o `oidc.tf`).
 
 ### 4. Enviar as imagens para o ECR
 
@@ -434,9 +441,7 @@ Em vez de guardar uma chave de acesso da AWS nos *secrets* do GitHub (que pode v
 
 ### Usando a CI no seu fork
 
-1. No `infra/terraform/oidc.tf`, ajuste os dois valores dentro do bloco `locals`:
-   - `github_repo`: `seu-usuario/seu-repositorio`;
-   - `github_sub_repo`: o GitHub inclui os **IDs numéricos** do dono e do repositório no token. Descubra-os (repositório público) e monte o valor no formato `seu-usuario@ID_DO_USUARIO/seu-repositorio@ID_DO_REPO`:
+1. Informe seu repositório ao Terraform (em um `terraform.tfvars`, ignorado pelo Git, ou com `-var`). São três variáveis: `github_repo` (`seu-usuario/seu-repositorio`), `github_owner_id` e `github_repo_id`. O GitHub inclui os **IDs numéricos** do dono e do repositório no token; descubra-os (repositório público):
 
      ```bash
      curl -s https://api.github.com/users/SEU_USUARIO | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])'
@@ -473,9 +478,8 @@ Este é um laboratório de estudo, e algumas escolhas priorizam **custo e simpli
 
 | Decisão | Motivo | Em produção |
 |---|---|---|
-| **Sem NAT Gateway**; nodes nas subnets públicas com IP público | O NAT Gateway custa cerca de US$ 0,045/hora mais tráfego. Sem ele, os nodes baixam imagens do ECR direto pela internet | Nodes em subnets privadas com NAT ou VPC endpoints |
-| **Subnets privadas criadas mas sem uso** | Já deixam a base pronta para essa evolução | Seriam usadas pelos nodes |
-| **Endpoint público da API do EKS** | Facilita o acesso do `kubectl` de qualquer lugar (a autenticação continua exigida) | Restringir por CIDR ou deixar privado |
+| **1 único NAT Gateway** para as 2 zonas | Nodes ficam em subnets privadas (boa prática), e o NAT custa cerca de US$ 0,045/hora mais tráfego. Um só divide o custo | 1 NAT por zona, para não ter ponto único de falha, ou VPC endpoints |
+| **Endpoint público da API do EKS** | Facilita o acesso do `kubectl` de qualquer lugar (a autenticação continua exigida). Dá para restringir pela variável `cluster_endpoint_public_access_cidrs` | Restringir por CIDR ou deixar privado |
 | **1 réplica por serviço** | Os dados ficam em memória: com 2 pods, cada um teria sua própria "base" e as buscas dariam `404` de forma intermitente | Escalar depois de adotar um banco de dados |
 | **Dados em memória** | Foco em infraestrutura, não em persistência | RDS, DynamoDB ou similar |
 | **Services `ClusterIP` e `port-forward`** | Evita o custo de um Load Balancer | Ingress com AWS Load Balancer Controller |
@@ -490,21 +494,22 @@ Valores aproximados na região `us-east-1` (confira a [calculadora de preços da
 
 | Recurso | Custo aproximado |
 |---|---|
-| Control plane do EKS | US$ 0,10 por hora |
-| 2 nodes `t3.medium` (sob demanda) | 2 × US$ 0,0416 por hora |
-| 2 endereços IPv4 públicos | ~US$ 0,005 por hora cada |
-| **Total com o cluster ligado** | **cerca de US$ 0,20 por hora** |
+| Control plane do EKS | US$ 0,10 por hora (só em versão com suporte padrão; a estendida custa US$ 0,60) |
+| 2 nodes `t3.large` (sob demanda) | 2 × US$ 0,0832 por hora |
+| NAT Gateway | US$ 0,045 por hora + tráfego, e ~US$ 0,005 por hora do IPv4 público |
+| **Total com o cluster ligado (fase atual)** | **cerca de US$ 0,32 por hora** |
 | ECR (armazenamento das imagens) | centavos por mês; a política de retenção mantém só as 5 últimas imagens por repositório |
 | Bucket S3 do state | centavos por mês |
 
-Uma sessão completa de estudo (1h30) custa em torno de **US$ 0,30**. O que realmente pesa é **esquecer o cluster ligado**: 24 horas equivalem a quase US$ 5 e um mês inteiro a cerca de US$ 145. Considere criar um [alerta de orçamento (AWS Budgets)](https://console.aws.amazon.com/billing/home#/budgets) antes de começar.
+Uma sessão completa de estudo (2h) custa em torno de **US$ 0,65**. O que realmente pesa é **esquecer o cluster ligado**: 24 horas equivalem a quase US$ 8 e um mês inteiro a cerca de US$ 230. O custo vai subir quando entrarem ALB, Karpenter e os demais componentes, e esta tabela será atualizada. Considere criar um [alerta de orçamento (AWS Budgets)](https://console.aws.amazon.com/billing/home#/budgets) antes de começar.
 
 ## Problemas comuns
 
 | Sintoma | Causa provável e solução |
 |---|---|
 | `Error: No configuration files` no `terraform apply` | Você está fora de `infra/terraform`. Entre na pasta e rode de novo |
-| `terraform init` falha no backend S3 | O `bucket` do `backend.tf` não existe na sua conta. Veja o passo 2.2 |
+| `terraform init` pede o bucket ou falha no backend S3 | Faltou `-backend-config=backend.hcl`, ou o bucket do arquivo não existe na sua conta. Veja o passo 2.2 |
+| `EntityAlreadyExists` no provedor OIDC do GitHub | A conta já tem o provedor. Rode com `-var create_github_oidc_provider=false` |
 | Node group passa de 12 minutos em *Still creating* | Verifique os eventos do Auto Scaling Group no console da AWS, que costumam apontar cota de vCPU ou erro de capacidade |
 | Pods em `ImagePullBackOff` | As imagens não estão no ECR ou o ID de conta nos values está errado. Rode o passo 4 e confira o passo 2.3 |
 | Pod reiniciando com `OOMKilled` | O limite de memória (128Mi) ficou pequeno. Aumente `resources.limits.memory` em `helm/microservice/values.yaml` |
