@@ -106,7 +106,7 @@ flowchart LR
         products["products<br/>Service :80 para Pod :8000"]
         payments["payments<br/>Service :80 para Pod :8003"]
         orders -->|"1. valida o usuário"| users
-        orders -->|"2. valida produto e estoque"| products
+        orders -->|"2. reserva estoque"| products
         orders -->|"3. processa o pagamento"| payments
     end
 ```
@@ -124,11 +124,13 @@ sequenceDiagram
     C->>O: POST /orders
     O->>U: GET /users/:id
     U-->>O: 200 ou 404
-    O->>P: GET /products/:id
-    P-->>O: 200 ou 404
-    Note over O: Confere o estoque e calcula o total
+    O->>P: PUT /products/:id/reservations/:order_id
+    P-->>O: Reserva criada ou recuperada
+    Note over O: Calcula o total
     O->>PG: POST /payments
     PG-->>O: approved ou declined
+    O->>P: DELETE /products/:id/reservations/:order_id
+    Note over P: Devolve estoque em caso de recusa
     O-->>C: 201 com status confirmed ou payment_declined
 ```
 
@@ -175,7 +177,7 @@ Se algum serviço estiver fora do ar, o `orders` responde `503`. Usuário ou pro
 
 ## Os serviços
 
-Todos guardam os dados **em memória** (não há banco de dados): ao reiniciar um pod, os dados dele são perdidos. É intencional, para manter o foco na infraestrutura. Todos expõem `GET /health`, usado nas probes do Kubernetes, e a documentação interativa do FastAPI fica em `/docs`.
+Cada serviço usa sua própria tabela no DynamoDB Local via Compose. No EKS, os pods ainda usam memória e perdem os dados ao reiniciar. Todos expõem `GET /health`, usado nas probes do Kubernetes, e a documentação interativa do FastAPI fica em `/docs`.
 
 | Serviço | Porta | Rotas | Observações |
 |---|---|---|---|
@@ -222,6 +224,8 @@ cd lab-ecommerce-microsservicos
 
 ### 1. Rodar localmente com Docker Compose (sem custo)
 
+O Compose inicializa as tabelas de usuários, produtos, pedidos e pagamentos no DynamoDB Local. O volume nomeado preserva os cadastros, o catálogo, o estoque, os pedidos e os pagamentos após `docker compose down`. No EKS, o chart atual mantém os quatro serviços em memória.
+
 ```bash
 docker compose up --build
 ```
@@ -233,6 +237,16 @@ Os serviços sobem em `localhost`: products `8000`, orders `8001`, users `8002` 
 ```
 
 Ele cria um usuário e um produto, faz um pedido e mostra a resposta. Se aparecer `"status": "confirmed"`, o fluxo completo funcionou. Um `"status": "payment_declined"` também é um resultado válido: é a recusa simulada de 10% do serviço `payments`. Se o script não tiver permissão de execução, rode `chmod +x scripts/*.sh`.
+
+Para verificar o cadastro concorrente, a disputa pela última unidade e a recuperação de um pagamento, com o Compose em execução e em um ambiente Python com as dependências de `services/orders/requirements.txt` e pytest, execute:
+
+```bash
+USERS_TEST_URL=http://localhost:8002 STOCK_TEST_URL=http://localhost:8000 PAYMENT_TEST_URL=http://localhost:8003 python -m pytest -q tests
+```
+
+A suíte cobre cadastro concorrente, estoque e recuperação de pagamento. O teste de disputa de estoque simula usuário e pagamento para controlar a aprovação e a recusa.
+
+Se o pagamento ficar sem resposta conclusiva, a reserva permanece pendente. Para retomar o pedido, repita o mesmo corpo em `POST /orders` com o mesmo cabeçalho `Idempotency-Key` enviado na primeira tentativa. Use uma chave diferente por compra. Reutilizar a chave com outro corpo retorna HTTP 409. Clientes que omitem o cabeçalho criam um novo pedido a cada envio. A retomada depende da repetição pelo cliente.
 
 Para encerrar, use `Ctrl+C` e depois `docker compose down`.
 
@@ -481,12 +495,12 @@ Este é um laboratório de estudo, e algumas escolhas priorizam **custo e simpli
 | **1 único NAT Gateway** para as 2 zonas | Nodes ficam em subnets privadas (boa prática), e o NAT custa cerca de US$ 0,045/hora mais tráfego. Um só divide o custo | 1 NAT por zona, para não ter ponto único de falha, ou VPC endpoints |
 | **Endpoint público da API do EKS** | Facilita o acesso do `kubectl` de qualquer lugar (a autenticação continua exigida). Dá para restringir pela variável `cluster_endpoint_public_access_cidrs` | Restringir por CIDR ou deixar privado |
 | **1 réplica por serviço** | Os dados ficam em memória: com 2 pods, cada um teria sua própria "base" e as buscas dariam `404` de forma intermitente | Escalar depois de adotar um banco de dados |
-| **Dados em memória** | Foco em infraestrutura, não em persistência | RDS, DynamoDB ou similar |
+| **Dados em memória no EKS** | O Compose já usa quatro tabelas locais | Provisionar as tabelas DynamoDB e IRSA por serviço no EKS |
 | **Services `ClusterIP` e `port-forward`** | Evita o custo de um Load Balancer | Ingress com AWS Load Balancer Controller |
 | **Tag `latest` nos deploys** | Simplicidade | Tags imutáveis (SHA do commit), que a CI já publica |
 | **Containers rodam como root** | Dockerfiles mínimos | Usuário não-root e `securityContext` |
 
-Comportamentos conhecidos da aplicação: o `orders` **não decrementa o estoque** depois de um pedido confirmado e não trata falhas HTTP do `payments` além de indisponibilidade de rede.
+Se a resposta de pagamento se perder, a reserva fica pendente até o cliente repetir o pedido com a mesma chave de idempotência.
 
 ## Custos
 
@@ -526,10 +540,10 @@ Ideias para evoluir o projeto:
 
 - [ ] **GitOps com ArgoCD**: o cluster passa a se sincronizar com o repositório, em vez de `helm install` manual.
 - [ ] **Observabilidade** com Prometheus e Grafana: métricas dos pods e dos serviços.
-- [ ] **Bancos de dados reais** (RDS ou DynamoDB), para liberar mais de uma réplica por serviço.
+- [ ] **DynamoDB no EKS** com quatro tabelas gerenciadas pelo Terraform e IRSA por serviço.
 - [ ] **Ingress** com AWS Load Balancer Controller, para expor a API sem `port-forward`.
 - [ ] **Endurecimento de segurança**: usuário não-root nos containers, `securityContext`, `NetworkPolicy`.
-- [ ] **Testes automatizados** dos serviços e validação do Terraform (`fmt`, `validate`) na CI.
+- [ ] **Executar a suíte pytest existente** e a validação do Terraform (`fmt`, `validate`) na CI.
 - [ ] **Gerenciamento de segredos** com External Secrets e AWS Secrets Manager.
 
 ## Licença
