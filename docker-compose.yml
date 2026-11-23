@@ -1,5 +1,30 @@
 services:
+  dynamodb:
+    image: amazon/dynamodb-local:3.1.0
+    command: -jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal
+    volumes:
+      - dynamodb-data:/home/dynamodblocal
+    networks: [lab-network]
+
+  init-tables:
+    build: ./services/products
+    command: python init_local.py
+    restart: on-failure
+    depends_on: [dynamodb]
+    environment: &local-db
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+    networks: [lab-network]
+
   products:
+    environment:
+      <<: *local-db
+      PRODUCTS_TABLE: products
+    depends_on:
+      init-tables:
+        condition: service_completed_successfully
     build: ./services/products
     ports:
       - "8000:8000"
@@ -10,6 +35,12 @@ services:
       - lab-network
 
   users:
+    environment:
+      <<: *local-db
+      USERS_TABLE: users
+    depends_on:
+      init-tables:
+        condition: service_completed_successfully
     build: ./services/users
     ports:
       - "8002:8002"
@@ -20,6 +51,12 @@ services:
       - lab-network
 
   payments:
+    environment:
+      <<: *local-db
+      PAYMENTS_TABLE: payments
+    depends_on:
+      init-tables:
+        condition: service_completed_successfully
     build: ./services/payments
     ports:
       - "8003:8003"
@@ -34,9 +71,11 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - PRODUCTS_SERVICE_URL=http://products:8000
-      - USERS_SERVICE_URL=http://users:8002
-      - PAYMENTS_SERVICE_URL=http://payments:8003
+      <<: *local-db
+      ORDERS_TABLE: orders
+      PRODUCTS_SERVICE_URL: http://products:8000
+      USERS_SERVICE_URL: http://users:8002
+      PAYMENTS_SERVICE_URL: http://payments:8003
     volumes:
       - ./services/orders:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
@@ -50,3 +89,6 @@ services:
 networks:
   lab-network:
     driver: bridge
+
+volumes:
+  dynamodb-data:
