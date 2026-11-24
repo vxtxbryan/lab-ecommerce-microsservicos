@@ -1,0 +1,12 @@
+enableServiceMutatorWebhook: false
+nodeSelector:
+  workload: system
+tolerations:
+  - key: CriticalAddonsOnly
+    operator: Exists
+    effect: NoSchedule
+controllerConfig:
+  featureGates:
+    ALBGatewayAPI: false
+    NLBGatewayAPI: false
+    GatewayListenerSet: false

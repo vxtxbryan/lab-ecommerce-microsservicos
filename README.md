@@ -370,6 +370,7 @@ Um release por serviço, com o chart genérico e o arquivo de valores de cada um
 
 ```bash
 bash scripts/install-karpenter.sh
+bash scripts/install-alb-controller.sh
 bash scripts/deploy-services.sh
 
 kubectl get pods -w
@@ -390,6 +391,18 @@ kubectl rollout restart deployment/orders
 ```
 
 ### 7. Testar o fluxo de um pedido
+
+O Ingress de `orders` publica a rota exata `/orders` em um ALB **interno**, com targets IP e checagem de saúde em `/health`. O security group do listener permite HTTP a partir do CIDR do laboratório. Quem estiver na rede permitida pode chamar a API; o serviço ainda não autentica o cliente. O ALB gera cobrança enquanto existir.
+
+Para testar a partir da VPC com os quatro serviços instalados, execute:
+
+```bash
+bash scripts/test-orders-ingress.sh
+```
+
+O teste cria usuário e produto pelos Services, envia o pedido ao DNS do ALB, repete a mesma chave de idempotência e verifica que o listener devolve 404 para `/users`.
+
+**Validação em 24/11/2026.** No EKS 1.35, o controller 3.6.3 registrou o IP do pod de orders e o target ficou `healthy`. Pelo DNS interno, `POST /orders` retornou HTTP 201 com `payment_declined`, resultado previsto pelo simulador. O replay retornou o mesmo pedido e `/users` retornou HTTP 404.
 
 Os Services são `ClusterIP` (internos). Para testar do seu computador, faça um port-forward com as mesmas portas do Docker Compose:
 
@@ -423,9 +436,10 @@ O campo `payment_id` preenchido comprova que o `orders` falou com os outros trê
 
 ### 8. Desligar tudo para parar a cobrança
 
-Primeiro remova os releases do Helm:
+Remova o Ingress enquanto o controller ainda está disponível. O script aguarda a exclusão do ALB antes de desinstalar o controller. Na validação de 24/11/2026, consultar os ARNs de teste retornou `LoadBalancerNotFound` e `TargetGroupNotFound` enquanto o EKS ainda estava `ACTIVE`. Depois, remova as aplicações e o Karpenter:
 
 ```bash
+bash scripts/remove-alb-controller.sh
 helm uninstall products users payments orders
 bash scripts/remove-karpenter.sh
 ```
@@ -434,7 +448,7 @@ bash scripts/remove-karpenter.sh
 
 ```bash
 cd infra/terraform
-terraform destroy -target=module.karpenter -target=module.eks -target=module.vpc
+terraform destroy -target=module.load_balancer_irsa -target=module.karpenter -target=module.eks -target=module.vpc
 ```
 
 O Terraform avisa que o uso de `-target` pode deixar mudanças incompletas. É esperado. Para subir de novo, basta um `terraform apply`. Confira que não sobrou cluster:
@@ -521,7 +535,7 @@ Este é um laboratório de estudo, e algumas escolhas priorizam **custo e simpli
 | **1 único NAT Gateway** para as 2 zonas | Nodes ficam em subnets privadas (boa prática), e o NAT custa cerca de US$ 0,045/hora mais tráfego. Um só divide o custo | 1 NAT por zona, para não ter ponto único de falha, ou VPC endpoints |
 | **Endpoint público da API do EKS** | Facilita o acesso do `kubectl` de qualquer lugar (a autenticação continua exigida). Dá para restringir pela variável `cluster_endpoint_public_access_cidrs` | Restringir por CIDR ou deixar privado |
 | **1 réplica por serviço** | Reduz o consumo de recursos do laboratório | Validar múltiplas réplicas e HPA no EKS |
-| **Services `ClusterIP` e `port-forward`** | Evita o custo de um Load Balancer | Ingress com AWS Load Balancer Controller |
+| **ALB interno** | Apenas a rota de pedidos está publicada para a rede do laboratório | Autenticação e TLS antes de abrir acesso externo |
 | **Tag `latest` nos deploys** | Simplicidade | Tags imutáveis (SHA do commit), que a CI já publica |
 | **Containers rodam como root** | Dockerfiles mínimos | Usuário não-root e `securityContext` |
 
@@ -536,11 +550,12 @@ Valores aproximados na região `us-east-1` (confira a [calculadora de preços da
 | Control plane do EKS | US$ 0,10 por hora (só em versão com suporte padrão; a estendida custa US$ 0,60) |
 | 2 nodes `t3.large` (sob demanda) | 2 × US$ 0,0832 por hora |
 | NAT Gateway | US$ 0,045 por hora + tráfego, e ~US$ 0,005 por hora do IPv4 público |
-| **Total com o cluster ligado (fase atual)** | **cerca de US$ 0,32 por hora** |
+| **Subtotal de EKS, dois nodes de sistema e NAT** | **cerca de US$ 0,32 por hora** |
+| ALB interno | Cobrança por hora e por capacidade utilizada (LCU), adicional ao subtotal |
 | ECR (armazenamento das imagens) | centavos por mês; a política de retenção mantém só as 5 últimas imagens por repositório |
 | Bucket S3 do state | centavos por mês |
 
-Uma sessão completa de estudo (2h) custa em torno de **US$ 0,65**. O que realmente pesa é **esquecer o cluster ligado**: 24 horas equivalem a quase US$ 8 e um mês inteiro a cerca de US$ 230. O custo vai subir com os nodes adicionais do Karpenter, o futuro ALB e os demais componentes, e esta tabela será atualizada. Considere criar um [alerta de orçamento (AWS Budgets)](https://console.aws.amazon.com/billing/home#/budgets) antes de começar.
+Somente a infraestrutura do subtotal, durante 2h, custa em torno de **US$ 0,65**. O que realmente pesa é **esquecer o cluster ligado**: 24 horas equivalem a quase US$ 8 e um mês inteiro a cerca de US$ 230. O custo vai subir com os nodes adicionais do Karpenter, o ALB interno e os demais componentes, e esta tabela será atualizada. Considere criar um [alerta de orçamento (AWS Budgets)](https://console.aws.amazon.com/billing/home#/budgets) antes de começar.
 
 ## Problemas comuns
 
@@ -566,7 +581,7 @@ Ideias para evoluir o projeto:
 - [ ] **GitOps com ArgoCD**: o cluster passa a se sincronizar com o repositório, em vez de `helm install` manual.
 - [ ] **Observabilidade** com Prometheus e Grafana: métricas dos pods e dos serviços.
 - [x] **Persistência e IRSA no EKS** validados com recriação dos pods e teste de acesso entre tabelas.
-- [ ] **Ingress** com AWS Load Balancer Controller, para expor a API sem `port-forward`.
+- [x] **Ingress interno para orders** com AWS Load Balancer Controller e IRSA, validado pelo DNS do ALB dentro da VPC.
 - [ ] **Endurecimento de segurança**: usuário não-root nos containers, `securityContext`, `NetworkPolicy`.
 - [ ] **Executar a suíte pytest existente** e a validação do Terraform (`fmt`, `validate`) na CI.
 - [ ] **Gerenciamento de segredos** com External Secrets e AWS Secrets Manager.

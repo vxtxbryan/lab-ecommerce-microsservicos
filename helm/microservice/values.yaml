@@ -1,6 +1,4 @@
-# 1 replica porque os servicos guardam dados em memoria: com 2 pods, cada um
-# teria sua propria "base" e as buscas dariam 404 de forma intermitente.
-# Quando entrarem os bancos de dados (RDS/DynamoDB), podemos escalar.
+# Uma réplica por serviço reduz o consumo do laboratório.
 replicaCount: 1
 
 image:
@@ -29,3 +27,7 @@ resources:
 
 serviceAccount:
   roleArn: ""
+
+ingress:
+  enabled: false
+  path: /

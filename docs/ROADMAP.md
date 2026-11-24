@@ -12,8 +12,8 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 
 ## Fase 1: plataforma de infraestrutura
 - [x] Karpenter (NodePool + EC2NodeClass) com IRSA, taint no grupo de sistema e teste real de provisionamento e consolidação de um node On-Demand
-- [ ] AWS Load Balancer Controller com IRSA
-- [ ] Ingress para a API (`orders`)
+- [x] AWS Load Balancer Controller com IRSA
+- [x] Ingress interno para a API (`orders`), testado pelo DNS do ALB
 
 ## Fase 2: serviços
 - [x] DynamoDB, uma tabela por serviço (database per service), com IRSA de menor privilégio por serviço
