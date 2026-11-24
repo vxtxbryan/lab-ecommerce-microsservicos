@@ -6,6 +6,10 @@ on:
     paths:
       - "services/**"
       - "tests/**"
+      - "infra/**"
+      - "helm/**"
+      - "scripts/**"
+      - ".trivyignore.yaml"
       - "docker-compose.yml"
       - ".github/workflows/ci.yml"
   pull_request:
@@ -13,6 +17,10 @@ on:
     paths:
       - "services/**"
       - "tests/**"
+      - "infra/**"
+      - "helm/**"
+      - "scripts/**"
+      - ".trivyignore.yaml"
       - "docker-compose.yml"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
@@ -25,6 +33,32 @@ env:
   PROJECT_NAME: ecommerce-microsservicos
 
 jobs:
+  configuration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.22.1
+      - name: Validar Terraform
+        run: |
+          terraform -chdir=infra/terraform fmt -check -recursive
+          terraform -chdir=infra/terraform init -backend=false -input=false -lockfile=readonly
+          terraform -chdir=infra/terraform validate
+      - name: Validar charts e scripts
+        run: |
+          bash scripts/validate-charts.sh /tmp/rendered
+          for script in scripts/*.sh; do bash -n "$script"; done
+          docker compose config --quiet
+      - name: Trivy configuração
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -v /tmp/rendered:/rendered:ro -w /src aquasec/trivy:0.76.2 config --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml --skip-dirs .git --skip-dirs helm --skip-dirs infra/terraform/.terraform .
+          docker run --rm -v /tmp/rendered:/rendered:ro aquasec/trivy:0.76.2 config --severity HIGH,CRITICAL --exit-code 1 /rendered
+
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -74,7 +108,7 @@ jobs:
         run: docker compose down --volumes
 
   build-scan-push:
-    needs: tests
+    needs: [tests, configuration]
     name: ${{ matrix.service }}
     runs-on: ubuntu-latest
     permissions:

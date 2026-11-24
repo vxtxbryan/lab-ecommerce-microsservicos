@@ -1,0 +1,11 @@
+misconfigurations:
+  - id: AWS-0031
+    paths:
+      - infra/terraform/ecr.tf
+    statement: "A CI e o script manual ainda publicam latest. Migrar ambos para SHA imutável na etapa de GitOps."
+  - id: AWS-0040
+    statement: "O administrador do laboratório acessa a API EKS pelo WSL. A API exige autenticação IAM."
+  - id: AWS-0041
+    statement: "O CIDR administrativo é configurável; o padrão aberto permanece para o laboratório até definir uma origem estável."
+  - id: AWS-0104
+    statement: "Os nodes privados usam NAT para ECR e APIs AWS. Restringir egress exige definir os endpoints utilizados pela plataforma."
