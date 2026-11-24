@@ -11,7 +11,7 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 - [x] Tags de descoberta do Karpenter (subnets e security group)
 
 ## Fase 1: plataforma de infraestrutura
-- [ ] Karpenter (NodePool + EC2NodeClass) com IRSA
+- [x] Karpenter (NodePool + EC2NodeClass) com IRSA, taint no grupo de sistema e teste real de provisionamento e consolidação de um node On-Demand
 - [ ] AWS Load Balancer Controller com IRSA
 - [ ] Ingress para a API (`orders`)
 

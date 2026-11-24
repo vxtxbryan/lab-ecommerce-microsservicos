@@ -48,6 +48,14 @@ module "eks" {
         workload = "system"
       }
 
+      taints = {
+        critical = {
+          key    = "CriticalAddonsOnly"
+          value  = "true"
+          effect = "NO_SCHEDULE"
+        }
+      }
+
       block_device_mappings = {
         xvda = {
           device_name = "/dev/xvda"

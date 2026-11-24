@@ -344,11 +344,32 @@ kubectl get pods -A
 
 Esperado: **2 nodes `Ready`** e os pods de sistema (`aws-node`, `coredns`, `kube-proxy`) em `Running`.
 
+### Autoscaling de nós
+
+O grupo gerenciado `system` usa o taint `CriticalAddonsOnly=true:NoSchedule`. O controller Karpenter roda nesses nós, com IRSA. O pool `workloads` provisiona instâncias Linux amd64 On-Demand em subnets privadas, usando o perfil IAM criado pelo Terraform e as tags de descoberta da VPC. O chart fixa a versão da AMI AL2023. O limite configurado é de 8 vCPUs; a consolidação de nodes vazios começa após 30 segundos.
+
+Para observar o ciclo em um cluster sem aplicações, instale o controller e a capacidade e crie o pod de teste:
+
+```bash
+bash scripts/install-karpenter.sh
+kubectl apply -f tests/kubernetes/karpenter-scale.yaml
+kubectl wait --for=condition=Ready pod/karpenter-scale-test --timeout=10m
+kubectl get nodes -L workload,node.kubernetes.io/instance-type
+kubectl get nodeclaims
+kubectl delete pod karpenter-scale-test
+kubectl get nodeclaims --watch
+```
+
+O pod exige o pool `workloads`. Quando ele é a única carga de aplicação, sua remoção deixa o node elegível para consolidação. Saia do watch com Ctrl+C após a exclusão do NodeClaim. O custo de EC2 e EBS do node dinâmico é adicional ao do node group de sistema.
+
+**Validação na AWS em 24/11/2026.** Com dois nodes de sistema de Kubernetes 1.35.9, o pod de teste ficou `Unschedulable`. O Karpenter 1.15.3 criou um NodeClaim e um `t3.medium` em subnet privada, sem IP público. O pod ficou `Ready`. Após excluir o pod, o Karpenter consolidou o node vazio. Confirmamos a exclusão do NodeClaim, a instância EC2 em `terminated` e o retorno aos dois `t3.large` de sistema.
+
 ### 6. Fazer o deploy com Helm
 
 Um release por serviço, com o chart genérico e o arquivo de valores de cada um. O **nome do release é o nome do Service**, e é por isso que `orders` consegue chamar `http://users`:
 
 ```bash
+bash scripts/install-karpenter.sh
 bash scripts/deploy-services.sh
 
 kubectl get pods -w
@@ -406,13 +427,14 @@ Primeiro remova os releases do Helm:
 
 ```bash
 helm uninstall products users payments orders
+bash scripts/remove-karpenter.sh
 ```
 
 **Opção A: desligar cluster e rede entre sessões.** As tabelas DynamoDB, seus dados e os repositórios ECR permanecem na conta e podem gerar custos de armazenamento.
 
 ```bash
 cd infra/terraform
-terraform destroy -target=module.eks -target=module.vpc
+terraform destroy -target=module.karpenter -target=module.eks -target=module.vpc
 ```
 
 O Terraform avisa que o uso de `-target` pode deixar mudanças incompletas. É esperado. Para subir de novo, basta um `terraform apply`. Confira que não sobrou cluster:
@@ -518,7 +540,7 @@ Valores aproximados na região `us-east-1` (confira a [calculadora de preços da
 | ECR (armazenamento das imagens) | centavos por mês; a política de retenção mantém só as 5 últimas imagens por repositório |
 | Bucket S3 do state | centavos por mês |
 
-Uma sessão completa de estudo (2h) custa em torno de **US$ 0,65**. O que realmente pesa é **esquecer o cluster ligado**: 24 horas equivalem a quase US$ 8 e um mês inteiro a cerca de US$ 230. O custo vai subir quando entrarem ALB, Karpenter e os demais componentes, e esta tabela será atualizada. Considere criar um [alerta de orçamento (AWS Budgets)](https://console.aws.amazon.com/billing/home#/budgets) antes de começar.
+Uma sessão completa de estudo (2h) custa em torno de **US$ 0,65**. O que realmente pesa é **esquecer o cluster ligado**: 24 horas equivalem a quase US$ 8 e um mês inteiro a cerca de US$ 230. O custo vai subir com os nodes adicionais do Karpenter, o futuro ALB e os demais componentes, e esta tabela será atualizada. Considere criar um [alerta de orçamento (AWS Budgets)](https://console.aws.amazon.com/billing/home#/budgets) antes de começar.
 
 ## Problemas comuns
 

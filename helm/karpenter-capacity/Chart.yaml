@@ -1,0 +1,4 @@
+apiVersion: v2
+name: karpenter-capacity
+description: Capacidade On-Demand para os workloads do laboratório
+version: 0.1.0
