@@ -177,7 +177,7 @@ Se algum serviço estiver fora do ar, o `orders` responde `503`. Usuário ou pro
 
 ## Os serviços
 
-Cada serviço usa sua própria tabela no DynamoDB Local via Compose. No EKS, os pods ainda usam memória e perdem os dados ao reiniciar. Todos expõem `GET /health`, usado nas probes do Kubernetes, e a documentação interativa do FastAPI fica em `/docs`.
+Cada serviço usa sua própria tabela no DynamoDB Local via Compose. No EKS, o deploy do passo 6 configura uma tabela DynamoDB e uma role IRSA por serviço. Todos expõem `GET /health`, usado nas probes do Kubernetes, e a documentação interativa do FastAPI fica em `/docs`.
 
 | Serviço | Porta | Rotas | Observações |
 |---|---|---|---|
@@ -224,7 +224,7 @@ cd lab-ecommerce-microsservicos
 
 ### 1. Rodar localmente com Docker Compose (sem custo)
 
-O Compose inicializa as tabelas de usuários, produtos, pedidos e pagamentos no DynamoDB Local. O volume nomeado preserva os cadastros, o catálogo, o estoque, os pedidos e os pagamentos após `docker compose down`. No EKS, o chart atual mantém os quatro serviços em memória.
+O Compose inicializa as tabelas de usuários, produtos, pedidos e pagamentos no DynamoDB Local. O volume nomeado preserva os cadastros, o catálogo, o estoque, os pedidos e os pagamentos após `docker compose down`.
 
 ```bash
 docker compose up --build
@@ -315,7 +315,7 @@ terraform apply
 
 Leia o plano e confirme com `yes`. A criação leva de **15 a 20 minutos**, e a maior parte é a espera do cluster EKS e do node group. Se a conexão cair, rode `terraform apply` de novo, que ele continua de onde parou. Ao final, volte para a raiz com `cd ../..`.
 
-O que é criado: 1 VPC com 4 subnets e 1 NAT Gateway, o cluster EKS com addons (`vpc-cni`, `kube-proxy`, `coredns`, `aws-ebs-csi-driver`) e o node group de sistema, 4 repositórios ECR (e a role OIDC, se você manteve o `oidc.tf`).
+O que é criado: 1 VPC com 4 subnets e 1 NAT Gateway, o cluster EKS com addons (`vpc-cni`, `kube-proxy`, `coredns`, `aws-ebs-csi-driver`) e o node group de sistema, quatro tabelas DynamoDB com roles IRSA por serviço, 4 repositórios ECR (e a role OIDC, se você manteve o `oidc.tf`).
 
 ### 4. Enviar as imagens para o ECR
 
@@ -349,14 +349,18 @@ Esperado: **2 nodes `Ready`** e os pods de sistema (`aws-node`, `coredns`, `kube
 Um release por serviço, com o chart genérico e o arquivo de valores de cada um. O **nome do release é o nome do Service**, e é por isso que `orders` consegue chamar `http://users`:
 
 ```bash
-for s in products users payments orders; do
-  helm install $s ./helm/microservice -f helm/values/$s.yaml
-done
+bash scripts/deploy-services.sh
 
 kubectl get pods -w
 ```
 
+Para implantar uma revisão específica, execute `IMAGE_TAG=<SHA-publicado-no-ECR> bash scripts/deploy-services.sh`. A tag deve existir nos quatro repositórios.
+
+O script combina os values de cada serviço com o output Terraform `service_helm_values` e instala no namespace `default`. Confira o contexto do kubectl antes de executar. Cada pod recebe o nome da sua tabela, a região e uma ServiceAccount associada à role correspondente. As tabelas usam cobrança por requisição. Um destroy completo exclui as tabelas e os dados do laboratório.
+
 Aguarde os 4 pods ficarem `1/1 Running` (cerca de 15 segundos) e saia com `Ctrl+C`. Confira também com `helm list` e `kubectl get svc`.
+
+**Validação no EKS em 24/11/2026.** Com dois nodes Kubernetes 1.35.9 e os quatro serviços na revisão `6afd133`, um pedido de duas unidades foi aprovado e o estoque caiu de quatro para duas. Após `kubectl rollout restart` dos quatro Deployments, todos os pods tinham novos UIDs. Repetir o mesmo corpo e a mesma `Idempotency-Key` retornou os mesmos IDs de pedido e pagamento, e o saldo continuou em duas unidades. Dentro do pod de payments, o SDK usou credenciais de identidade web: `GetItem` encontrou o pagamento na tabela própria e recebeu `AccessDeniedException` na tabela de usuários.
 
 Para atualizar depois de enviar uma imagem nova (a tag é `latest` com `pullPolicy: Always`), reinicie o Deployment:
 
@@ -404,7 +408,7 @@ Primeiro remova os releases do Helm:
 helm uninstall products users payments orders
 ```
 
-**Opção A: desligar só o que custa dinheiro** (mantém ECR e a role OIDC, que praticamente não custam; é o que o autor faz entre uma sessão de estudo e outra):
+**Opção A: desligar cluster e rede entre sessões.** As tabelas DynamoDB, seus dados e os repositórios ECR permanecem na conta e podem gerar custos de armazenamento.
 
 ```bash
 cd infra/terraform
@@ -494,8 +498,7 @@ Este é um laboratório de estudo, e algumas escolhas priorizam **custo e simpli
 |---|---|---|
 | **1 único NAT Gateway** para as 2 zonas | Nodes ficam em subnets privadas (boa prática), e o NAT custa cerca de US$ 0,045/hora mais tráfego. Um só divide o custo | 1 NAT por zona, para não ter ponto único de falha, ou VPC endpoints |
 | **Endpoint público da API do EKS** | Facilita o acesso do `kubectl` de qualquer lugar (a autenticação continua exigida). Dá para restringir pela variável `cluster_endpoint_public_access_cidrs` | Restringir por CIDR ou deixar privado |
-| **1 réplica por serviço** | Os dados ficam em memória: com 2 pods, cada um teria sua própria "base" e as buscas dariam `404` de forma intermitente | Escalar depois de adotar um banco de dados |
-| **Dados em memória no EKS** | O Compose já usa quatro tabelas locais | Provisionar as tabelas DynamoDB e IRSA por serviço no EKS |
+| **1 réplica por serviço** | Reduz o consumo de recursos do laboratório | Validar múltiplas réplicas e HPA no EKS |
 | **Services `ClusterIP` e `port-forward`** | Evita o custo de um Load Balancer | Ingress com AWS Load Balancer Controller |
 | **Tag `latest` nos deploys** | Simplicidade | Tags imutáveis (SHA do commit), que a CI já publica |
 | **Containers rodam como root** | Dockerfiles mínimos | Usuário não-root e `securityContext` |
@@ -540,7 +543,7 @@ Ideias para evoluir o projeto:
 
 - [ ] **GitOps com ArgoCD**: o cluster passa a se sincronizar com o repositório, em vez de `helm install` manual.
 - [ ] **Observabilidade** com Prometheus e Grafana: métricas dos pods e dos serviços.
-- [ ] **DynamoDB no EKS** com quatro tabelas gerenciadas pelo Terraform e IRSA por serviço.
+- [x] **Persistência e IRSA no EKS** validados com recriação dos pods e teste de acesso entre tabelas.
 - [ ] **Ingress** com AWS Load Balancer Controller, para expor a API sem `port-forward`.
 - [ ] **Endurecimento de segurança**: usuário não-root nos containers, `securityContext`, `NetworkPolicy`.
 - [ ] **Executar a suíte pytest existente** e a validação do Terraform (`fmt`, `validate`) na CI.

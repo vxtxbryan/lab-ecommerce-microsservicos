@@ -16,9 +16,9 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 - [ ] Ingress para a API (`orders`)
 
 ## Fase 2: serviços
-- [ ] DynamoDB, uma tabela por serviço (database per service), com IRSA de menor privilégio por serviço
-- [ ] Correções no `orders` (status HTTP dos outros serviços, estoque)
-- [ ] Testes automatizados (pytest)
+- [x] DynamoDB, uma tabela por serviço (database per service), com IRSA de menor privilégio por serviço
+- [x] Correções no `orders` (status HTTP dos outros serviços, estoque)
+- [x] Testes automatizados (pytest)
 - [ ] Dockerfiles não-root + `.dockerignore`
 - [ ] Instrumentação: `/metrics`, logs JSON e OpenTelemetry
 
