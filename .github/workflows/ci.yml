@@ -5,11 +5,15 @@ on:
     branches: [main]
     paths:
       - "services/**"
+      - "tests/**"
+      - "docker-compose.yml"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
     paths:
       - "services/**"
+      - "tests/**"
+      - "docker-compose.yml"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
 
@@ -21,7 +25,56 @@ env:
   PROJECT_NAME: ecommerce-microsservicos
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependências dos testes
+        run: pip install -r services/orders/requirements.txt pytest
+      - name: Subir serviços e aguardar APIs
+        run: |
+          docker compose up --build -d
+          python - <<'PYTHON'
+          import time
+          import httpx
+          for port in (8000, 8001, 8002, 8003):
+              deadline = time.monotonic() + 120
+              while True:
+                  try:
+                      response = httpx.get(f"http://localhost:{port}/health", timeout=3)
+                      if response.status_code == 200:
+                          break
+                  except httpx.RequestError:
+                      pass
+                  if time.monotonic() >= deadline:
+                      raise SystemExit(f"API na porta {port} indisponível")
+                  time.sleep(2)
+          PYTHON
+      - name: Executar testes unitários e integração
+        env:
+          USERS_TEST_URL: http://localhost:8002
+          STOCK_TEST_URL: http://localhost:8000
+          PAYMENT_TEST_URL: http://localhost:8003
+        run: |
+          python -m pytest -q --junitxml=/tmp/results.xml tests
+          python - <<'PYTHON'
+          import xml.etree.ElementTree as ET
+          suites = ET.parse("/tmp/results.xml").getroot().iter("testsuite")
+          assert all(int(s.attrib.get("skipped", 0)) == 0 for s in suites), "Testes ignorados"
+          PYTHON
+      - name: Diagnóstico
+        if: failure()
+        run: docker compose logs --no-color --tail=100
+      - name: Limpeza
+        if: always()
+        run: docker compose down --volumes
+
   build-scan-push:
+    needs: tests
     name: ${{ matrix.service }}
     runs-on: ubuntu-latest
     permissions:
