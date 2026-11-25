@@ -241,7 +241,7 @@ Ele cria um usuário e um produto, faz um pedido e mostra a resposta. Se aparece
 Para verificar o cadastro concorrente, a disputa pela última unidade e a recuperação de um pagamento, com o Compose em execução e em um ambiente Python com as dependências de `services/orders/requirements.txt` e pytest, execute:
 
 ```bash
-USERS_TEST_URL=http://localhost:8002 STOCK_TEST_URL=http://localhost:8000 PAYMENT_TEST_URL=http://localhost:8003 python -m pytest -q tests
+ORDERS_TEST_URL=http://localhost:8001 USERS_TEST_URL=http://localhost:8002 STOCK_TEST_URL=http://localhost:8000 PAYMENT_TEST_URL=http://localhost:8003 python -m pytest -q tests
 ```
 
 A suíte cobre cadastro concorrente, estoque e recuperação de pagamento. O teste de disputa de estoque simula usuário e pagamento para controlar a aprovação e a recusa.
@@ -474,7 +474,7 @@ O bucket S3 do state **não** é apagado pelo `destroy`. Para removê-lo: `aws s
 
 ## Pipeline de CI
 
-A publicação no ECR depende da aprovação dos testes e da validação de configuração. A CI executa pytest com as APIs e DynamoDB Local, rejeita testes ignorados, verifica Terraform com backend desativado, faz lint e renderiza os dois charts, verifica a sintaxe dos scripts e executa Trivy nos arquivos de configuração e nos manifests renderizados. Alterações em testes, infraestrutura, charts e scripts também disparam esses jobs.
+O teste de checkout usa as quatro APIs por HTTP e confere pagamento, estoque e idempotência, aceitando aprovação ou recusa simulada. Execute a suíte somente em ambiente de testes: ela cria registros de usuários, produtos, pedidos e pagamentos. A publicação no ECR depende da aprovação dos testes e da validação de configuração. A CI executa pytest com as APIs e DynamoDB Local, rejeita testes ignorados, verifica Terraform com backend desativado, faz lint e renderiza os dois charts, verifica a sintaxe dos scripts e executa Trivy nos arquivos de configuração e nos manifests renderizados. Alterações em testes, infraestrutura, charts e scripts também disparam esses jobs.
 
 O scan de configuração bloqueia achados HIGH e CRITICAL. As exceções atuais estão em `.trivyignore.yaml`, com justificativas para ECR mutável, endpoint administrativo público e saída dos nodes via NAT. Essas exceções devem ser revisadas na migração para GitOps e no endurecimento da rede.
 

@@ -90,6 +90,7 @@ jobs:
           PYTHON
       - name: Executar testes unitários e integração
         env:
+          ORDERS_TEST_URL: http://localhost:8001
           USERS_TEST_URL: http://localhost:8002
           STOCK_TEST_URL: http://localhost:8000
           PAYMENT_TEST_URL: http://localhost:8003
