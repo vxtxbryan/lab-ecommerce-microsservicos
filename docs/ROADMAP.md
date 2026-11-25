@@ -26,7 +26,7 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 - [ ] Chart Helm evoluído (ServiceAccount, Ingress, HPA, PDB, securityContext, ServiceMonitor)
 - [x] CI: pytest, `terraform fmt/validate`, validação Helm/scripts e `trivy config` antes da publicação; imagens com tag por SHA
 - [ ] CI: atualização da tag de deploy no Git
-- [ ] ECR com tags imutáveis (sem `latest`)
+- [x] ECR com tags imutáveis por SHA (sem `latest`)
 - [ ] ArgoCD com app-of-apps (`gitops/`)
 
 ## Fase 4: segurança de runtime

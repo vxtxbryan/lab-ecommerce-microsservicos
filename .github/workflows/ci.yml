@@ -161,6 +161,4 @@ jobs:
         run: |
           REPO="${REGISTRY}/${PROJECT_NAME}-${{ matrix.service }}"
           docker tag local/${{ matrix.service }}:${{ github.sha }} "${REPO}:${{ github.sha }}"
-          docker tag local/${{ matrix.service }}:${{ github.sha }} "${REPO}:latest"
           docker push "${REPO}:${{ github.sha }}"
-          docker push "${REPO}:latest"

@@ -325,7 +325,7 @@ O Docker precisa estar rodando. Na raiz do repositório:
 ./scripts/build-and-push.sh
 ```
 
-O script autentica no ECR, builda as 4 imagens e as envia com a tag `latest`. Confira:
+O script autentica no ECR, builda as quatro imagens e publica cada uma com a tag SHA curto do commit. Confira:
 
 ```bash
 aws ecr describe-images --repository-name ecommerce-microsservicos-orders \
@@ -384,10 +384,10 @@ Aguarde os 4 pods ficarem `1/1 Running` (cerca de 15 segundos) e saia com `Ctrl+
 
 **Validação no EKS em 24/11/2026.** Com dois nodes Kubernetes 1.35.9 e os quatro serviços na revisão `6afd133`, um pedido de duas unidades foi aprovado e o estoque caiu de quatro para duas. Após `kubectl rollout restart` dos quatro Deployments, todos os pods tinham novos UIDs. Repetir o mesmo corpo e a mesma `Idempotency-Key` retornou os mesmos IDs de pedido e pagamento, e o saldo continuou em duas unidades. Dentro do pod de payments, o SDK usou credenciais de identidade web: `GetItem` encontrou o pagamento na tabela própria e recebeu `AccessDeniedException` na tabela de usuários.
 
-Para atualizar depois de enviar uma imagem nova (a tag é `latest` com `pullPolicy: Always`), reinicie o Deployment:
+Para atualizar depois de publicar uma revisão nova, execute novamente o deploy com seu SHA:
 
 ```bash
-kubectl rollout restart deployment/orders
+IMAGE_TAG=<SHA-publicado-no-ECR> bash scripts/deploy-services.sh
 ```
 
 ### 7. Testar o fluxo de um pedido
@@ -488,11 +488,11 @@ flowchart LR
     b --> c["Scan Trivy<br/>HIGH e CRITICAL"]
     c -->|"achou vulnerabilidade com correção"| x["Pipeline reprovada"]
     c -->|"limpo, somente em push na main"| d["Login na AWS via OIDC"]
-    d --> e["Push para o ECR<br/>tags: SHA do commit e latest"]
+    d --> e["Push para o ECR<br/>tag imutável: SHA do commit"]
 ```
 
 - **Em pull requests**, a pipeline só faz build e scan, e **não toca na AWS**.
-- **No push para a `main`**, depois do scan, ela assume uma role da AWS e envia a imagem com duas tags: o SHA do commit (rastreável) e `latest` (a que o Helm usa).
+- **No push para a `main`**, depois do scan, ela assume uma role da AWS e envia cada imagem ao ECR com o SHA completo do commit. O Helm usa essa mesma tag para implantar uma revisão específica.
 - **Trivy:** reprova em vulnerabilidades `HIGH` e `CRITICAL` que já tenham correção disponível (`ignore-unfixed`). A action do Trivy está fixada pelo **hash do commit** e não por tag, como proteção contra ataques à cadeia de suprimentos.
 
 ### Por que OIDC?
@@ -542,7 +542,7 @@ Este é um laboratório de estudo, e algumas escolhas priorizam **custo e simpli
 | **Endpoint público da API do EKS** | Facilita o acesso do `kubectl` de qualquer lugar (a autenticação continua exigida). Dá para restringir pela variável `cluster_endpoint_public_access_cidrs` | Restringir por CIDR ou deixar privado |
 | **1 réplica por serviço** | Reduz o consumo de recursos do laboratório | Validar múltiplas réplicas e HPA no EKS |
 | **ALB interno** | Apenas a rota de pedidos está publicada para a rede do laboratório | Autenticação e TLS antes de abrir acesso externo |
-| **Tag `latest` nos deploys** | Simplicidade | Tags imutáveis (SHA do commit), que a CI já publica |
+| **Tags imutáveis no ECR** | Rastreabilidade por commit e prevenção de sobrescrita acidental | Deploy requer `IMAGE_TAG` com um SHA publicado |
 | **Containers sem privilégios** | UID 10001, filesystem somente leitura no Helm e capabilities removidas | Adicionar NetworkPolicy |
 
 Se a resposta de pagamento se perder, a reserva fica pendente até o cliente repetir o pedido com a mesma chave de idempotência.

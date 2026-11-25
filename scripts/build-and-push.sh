@@ -59,11 +59,9 @@ for SERVICE in "${SERVICES[@]}"; do
 
   echo "Aplicando tags para o ECR..."
   docker tag "${IMAGE_NAME}:${GIT_SHA}" "${REPO}:${GIT_SHA}"
-  docker tag "${IMAGE_NAME}:${GIT_SHA}" "${REPO}:latest"
 
   echo "Enviando para o ECR..."
   push_with_retry "${REPO}:${GIT_SHA}"
-  push_with_retry "${REPO}:latest"
 
   echo "$SERVICE concluido: ${REPO}:${GIT_SHA}"
 done
