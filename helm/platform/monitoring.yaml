@@ -10,17 +10,6 @@ alertmanager:
     resources:
       requests: {cpu: 50m, memory: 64Mi}
       limits: {cpu: 200m, memory: 192Mi}
-  config:
-    global:
-      resolve_timeout: 5m
-    route:
-      receiver: local
-      group_by: [alertname, namespace]
-      group_wait: 30s
-      group_interval: 5m
-      repeat_interval: 4h
-    receivers:
-      - name: local
 # EKS não expõe estes componentes gerenciados para scrape direto.
 kubeEtcd: {enabled: false}
 kubeControllerManager: {enabled: false}
