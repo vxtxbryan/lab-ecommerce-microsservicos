@@ -1,0 +1,35 @@
+rule_files:
+  - alerts.yaml
+evaluation_interval: 15s
+tests:
+  - name: Deployment indisponivel dispara apos um minuto
+    interval: 15s
+    input_series:
+      - series: 'kube_deployment_status_replicas_available{namespace="default",deployment="payments"}'
+        values: '0+0x20'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: EcommerceDeploymentUnavailable
+        exp_alerts:
+          - exp_labels: {namespace: default, deployment: payments, severity: critical}
+            exp_annotations:
+              summary: Uma API está sem réplicas disponíveis
+              description: Verifique rollout, eventos e logs do Deployment antes de reiniciar.
+  - name: Target saudavel nao dispara
+    interval: 15s
+    input_series:
+      - series: 'up{namespace="default",service="orders"}'
+        values: '1+0x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: EcommerceTargetDown
+        exp_alerts: []
+  - name: Pouco trafego nao dispara alerta de taxa de erro
+    interval: 15s
+    input_series:
+      - series: 'ecommerce_http_requests_total{service="orders",status="500"}'
+        values: '0+0.1x50'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: EcommerceHighErrorRate
+        exp_alerts: []

@@ -1,5 +1,5 @@
 COMPOSE := docker compose
-.PHONY: up down test validate charts fmt deploy clean monitoring monitoring-test
+.PHONY: up down test validate charts fmt deploy clean monitoring monitoring-test alerts-test
 up:
 	$(COMPOSE) up --build -d
 down:
@@ -23,3 +23,6 @@ monitoring:
 
 monitoring-test:
 	bash scripts/test-monitoring.sh
+
+alerts-test:
+	bash scripts/test-alerts.sh

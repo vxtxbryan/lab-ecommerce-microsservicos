@@ -53,6 +53,8 @@ Os endpoints são internos, sem autenticação entre Prometheus e APIs; Grafana 
 
 Os alertas ficam no Prometheus/Alertmanager. Não existe receiver de e-mail/Slack configurado. Para produção, escolha o destino e guarde suas credenciais fora do Git. AWS Budgets é independente e avisa sobre gastos, não sobre saúde das APIs.
 
+Valide as regras offline com `make alerts-test` (Python/PyYAML, Helm e Docker). A CI executa estes cenários. HPA exige metrics-server, que não é instalado por este monitoramento; mantenha HPA desativado até fornecê-lo. Habilite PDB apenas com réplicas suficientes para permitir manutenção.
+
 ## Como apresentar
 
 Demonstre uma compra, explique a reserva de estoque e a idempotência, mostre o crescimento do contador, o p95 e os logs JSON. Explique como um erro ou Deployment indisponível vira alerta. Relacione CPU/memória com latência. Mostre que a CI testa o fluxo antes de publicar SHA imutável e que métricas não carregam dados do cliente. Por fim, justifique o escopo: métricas e alertas cobrem a operação inicial; logs centralizados e traces passam a fazer sentido quando investigar falhas distribuídas exigir mais correlação.
@@ -60,3 +62,5 @@ Demonstre uma compra, explique a reserva de estoque e a idempotência, mostre o 
 ## Desmontagem
 
 Remova primeiro o Ingress/ALB, depois releases de aplicações e monitoramento, depois nodes Karpenter e controllers, antes do Terraform destroy. Isso permite aos controllers remover recursos externos e seus finalizers. Consulte o README para esvaziar ECRs antes do destroy completo. Budgets existentes e o bucket de state têm ciclo de vida separado. Nunca destrua o bucket durante um apply/destroy: ele guarda o state e o lock.
+
+Referências: [chart kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack), [consultas Prometheus](https://prometheus.io/docs/prometheus/latest/querying/basics/) e [teste de regras](https://prometheus.io/docs/prometheus/latest/configuration/unit_testing_rules/).
