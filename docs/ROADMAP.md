@@ -35,7 +35,7 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 - [ ] cert-manager + Linkerd (mTLS entre serviços)
 
 ## Fase 5: observabilidade
-- [ ] Prometheus + Grafana (kube-prometheus-stack) e dashboards
+- [x] Prometheus + Grafana (kube-prometheus-stack), dashboards, métricas e alertas versionados
 - [ ] Loki + Grafana Alloy (evolução futura; logs atuais via kubectl)
 - [ ] OpenTelemetry Collector + Jaeger (evolução futura)
 
@@ -43,4 +43,12 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 - [x] README final com diagrama da arquitetura completa
 - [x] `Makefile` com `up`/`down` e referência de custos
 - [x] AWS Budgets mensais de US$50 e US$100 com alertas (já configurados)
-- [ ] Recriar EKS, validar deploy e smoke test; guardar evidências (recursos faturáveis)
+- [ ] Recriar EKS temporariamente, validar deploy e smoke test; guardar evidências (opcional, gera custos e requer autorização do mantenedor)
+
+## Estado de encerramento (26/11/2026)
+
+- Observabilidade Prometheus/Grafana implementada em Helm, documentada e coberta por validação offline das regras de alerta na CI.
+- A instalação no EKS foi tentada, mas a validação ponta a ponta não foi concluída: o Alertmanager apresentou erro de receiver. A configuração customizada foi removida para usar a configuração padrão do chart; o resultado precisa ser confirmado ao recriar o cluster.
+- O mantenedor removeu manualmente o EKS e os demais recursos AWS para interromper custos. Não recriar infraestrutura sem combinar previamente.
+- As evidências de persistência, isolamento IRSA, Ingress e escala Karpenter de 24/11/2026 foram reportadas pelo mantenedor. Os testes pós-observabilidade ainda precisam rodar em cluster para validar a integração real.
+- Para evitar manter recursos faturáveis, o projeto pode ser encerrado com as validações locais e CI atuais; a validação EKS fica documentada como pendente/opcional.
