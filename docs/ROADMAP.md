@@ -23,9 +23,9 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 - [ ] Instrumentação: `/metrics`, logs JSON e OpenTelemetry
 
 ## Fase 3: CI/CD e GitOps
-- [ ] Chart Helm evoluído (ServiceAccount, Ingress, HPA, PDB, securityContext, ServiceMonitor)
+- [x] Chart Helm evoluído (ServiceAccount, Ingress, HPA, PDB, securityContext, ServiceMonitor opcionais)
 - [x] CI: pytest, `terraform fmt/validate`, validação Helm/scripts e `trivy config` antes da publicação; imagens com tag por SHA
-- [ ] CI: atualização da tag de deploy no Git
+- [x] CI: PR de release com SHA; deploy permanece manual
 - [x] ECR com tags imutáveis por SHA (sem `latest`)
 - [ ] ArgoCD com app-of-apps (`gitops/`)
 
@@ -39,6 +39,6 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 - [ ] OpenTelemetry Collector + Jaeger (tracing distribuído)
 
 ## Fase 6: polimento
-- [ ] README final com diagrama da arquitetura completa
-- [ ] `Makefile` com `up`/`down` e custos atualizados
-- [ ] AWS Budgets e prints das evidências
+- [x] README final com diagrama da arquitetura completa
+- [x] `Makefile` com `up`/`down` e referência de custos
+- [ ] AWS Budgets e evidências da validação final na conta (pendente de autorização para uso AWS)

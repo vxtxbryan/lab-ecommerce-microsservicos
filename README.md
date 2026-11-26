@@ -62,6 +62,8 @@ O objetivo é servir como material de estudo e como referência de um fluxo comp
 
 ## Arquitetura
 
+A CI valida e publica imagens com SHA imutável e propõe a atualização de `helm/releases.yaml` em PR. O merge aprova a versão; o deploy ao EKS permanece manual.
+
 ### Visão da infraestrutura
 
 ```mermaid
@@ -217,6 +219,8 @@ Para a parte local (passo 1) você só precisa de Git e Docker.
 
 ## Passo a passo
 
+Atalhos: `make up` inicia o Compose; `make down` encerra sem apagar dados; `make test` executa pytest; `make validate` verifica Helm, Terraform, scripts e Compose; `make clean` remove também o volume local DynamoDB; `make deploy` instala os SHAs aprovados e requer kubeconfig.
+
 ```bash
 git clone https://github.com/vxtxbryan/lab-ecommerce-microsservicos.git
 cd lab-ecommerce-microsservicos
@@ -371,14 +375,14 @@ Um release por serviço, com o chart genérico e o arquivo de valores de cada um
 ```bash
 bash scripts/install-karpenter.sh
 bash scripts/install-alb-controller.sh
-bash scripts/deploy-services.sh
+make deploy
 
 kubectl get pods -w
 ```
 
-Para implantar uma revisão específica, execute `IMAGE_TAG=<SHA-publicado-no-ECR> bash scripts/deploy-services.sh`. A tag deve existir nos quatro repositórios.
+Para implantar uma revisão específica, execute `IMAGE_TAG=<SHA-publicado-no-ECR> make deploy`. A tag deve existir nos quatro repositórios.
 
-O script combina os values de cada serviço com o output Terraform `service_helm_values` e instala no namespace `default`. Confira o contexto do kubectl antes de executar. Cada pod recebe o nome da sua tabela, a região e uma ServiceAccount associada à role correspondente. As tabelas usam cobrança por requisição. Um destroy completo exclui as tabelas e os dados do laboratório.
+A CI propõe novos SHAs em helm/releases.yaml por pull request; revise e faça merge antes do deploy. Ative nas configurações Actions do GitHub a permissão para o GITHUB_TOKEN criar pull requests. O script combina os values de cada serviço com o output Terraform `service_helm_values` e instala no namespace `default`. Confira o contexto do kubectl antes de executar. Cada pod recebe o nome da sua tabela, a região e uma ServiceAccount associada à role correspondente. As tabelas usam cobrança por requisição. Um destroy completo exclui as tabelas e os dados do laboratório.
 
 Aguarde os 4 pods ficarem `1/1 Running` (cerca de 15 segundos) e saia com `Ctrl+C`. Confira também com `helm list` e `kubectl get svc`.
 
@@ -387,7 +391,7 @@ Aguarde os 4 pods ficarem `1/1 Running` (cerca de 15 segundos) e saia com `Ctrl+
 Para atualizar depois de publicar uma revisão nova, execute novamente o deploy com seu SHA:
 
 ```bash
-IMAGE_TAG=<SHA-publicado-no-ECR> bash scripts/deploy-services.sh
+IMAGE_TAG=<SHA-publicado-no-ECR> make deploy
 ```
 
 ### 7. Testar o fluxo de um pedido
@@ -587,9 +591,11 @@ Ideias para evoluir o projeto:
 - [ ] **Observabilidade** com Prometheus e Grafana: métricas dos pods e dos serviços.
 - [x] **Persistência e IRSA no EKS** validados com recriação dos pods e teste de acesso entre tabelas.
 - [x] **Ingress interno para orders** com AWS Load Balancer Controller e IRSA, validado pelo DNS do ALB dentro da VPC.
-- [ ] **Endurecimento de segurança**: usuário não-root nos containers, `securityContext`, `NetworkPolicy`.
+- [x] **Endurecimento de segurança**: usuário não-root nos containers e `securityContext`; NetworkPolicy fica para expansão futura.
 - [x] **Executar pytest e validar Terraform e Helm na CI**, com scan de configuração.
 - [ ] **Gerenciamento de segredos** com External Secrets e AWS Secrets Manager.
+
+Os itens essenciais de código estão concluídos. Restam smoke test/deploy e AWS Budgets na conta quando o uso AWS for autorizado. Depois, a próxima fase é observabilidade, descrita em [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Licença
 

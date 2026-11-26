@@ -9,5 +9,6 @@ spec:
   ports:
     - port: {{ .Values.service.port }}
       targetPort: {{ .Values.containerPort }}
+      name: http
   selector:
     app: {{ .Release.Name }}

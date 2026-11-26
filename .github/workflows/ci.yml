@@ -162,3 +162,42 @@ jobs:
           REPO="${REGISTRY}/${PROJECT_NAME}-${{ matrix.service }}"
           docker tag local/${{ matrix.service }}:${{ github.sha }} "${REPO}:${{ github.sha }}"
           docker push "${REPO}:${{ github.sha }}"
+
+  record-release:
+    needs: build-scan-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Registrar SHA publicado para deploy manual
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("helm/releases.yaml")
+          services = ("products", "orders", "users", "payments")
+          path.write_text("".join(f"{name}: {os.environ['IMAGE_TAG']}\n" for name in services))
+          PY
+      - name: Abrir PR da versão
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          BRANCH="release/${IMAGE_TAG}"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git checkout -B "$BRANCH"
+          git add helm/releases.yaml
+          git commit -m "chore: registrar imagens ${IMAGE_TAG}" || exit 0
+          git push --force origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" \
+            --title "chore: atualizar imagens ${IMAGE_TAG}" \
+            --body "Atualiza helm/releases.yaml com as imagens publicadas e verificadas para ${IMAGE_TAG}. Revise e faça merge para atualizar a versão aprovada para deploy."
