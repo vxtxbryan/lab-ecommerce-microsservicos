@@ -497,6 +497,7 @@ flowchart LR
 
 - **Em pull requests**, a pipeline só faz build e scan, e **não toca na AWS**.
 - **No push para a `main`**, depois do scan, ela assume uma role da AWS e envia cada imagem ao ECR com o SHA completo do commit. O Helm usa essa mesma tag para implantar uma revisão específica.
+- **Sem a variável `AWS_ROLE_ARN`**, a CI mantém build, testes e scans, mas pula publicação no ECR e atualização do manifesto de release. Isso permite validar o repositório quando a infraestrutura AWS está desligada.
 - **Trivy:** reprova em vulnerabilidades `HIGH` e `CRITICAL` que já tenham correção disponível (`ignore-unfixed`). A action do Trivy está fixada pelo **hash do commit** e não por tag, como proteção contra ataques à cadeia de suprimentos.
 
 ### Por que OIDC?
