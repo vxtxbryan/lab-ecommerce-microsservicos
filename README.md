@@ -565,7 +565,7 @@ Valores aproximados na região `us-east-1` (confira a [calculadora de preços da
 | ECR (armazenamento das imagens) | centavos por mês; a política de retenção mantém só as 5 últimas imagens por repositório |
 | Bucket S3 do state | centavos por mês |
 
-Somente a infraestrutura do subtotal, durante 2h, custa em torno de **US$ 0,65**. O que realmente pesa é **esquecer o cluster ligado**: 24 horas equivalem a quase US$ 8 e um mês inteiro a cerca de US$ 230. O custo vai subir com os nodes adicionais do Karpenter, o ALB interno e os demais componentes, e esta tabela será atualizada. Considere criar um [alerta de orçamento (AWS Budgets)](https://console.aws.amazon.com/billing/home#/budgets) antes de começar.
+Somente a infraestrutura do subtotal, durante 2h, custa em torno de **US$ 0,65**. Esquecer o cluster ligado pode custar quase US$ 8 por dia e cerca de US$ 230 por mês. Karpenter, ALB e observabilidade adicionam custos. Na conta deste laboratório já existem budgets mensais de US$50 e US$100 com alertas. Consulte a [página AWS Budgets](https://console.aws.amazon.com/billing/home#/budgets) antes de iniciar recursos.
 
 ## Problemas comuns
 
@@ -595,7 +595,7 @@ Ideias para evoluir o projeto:
 - [x] **Executar pytest e validar Terraform e Helm na CI**, com scan de configuração.
 - [ ] **Gerenciamento de segredos** com External Secrets e AWS Secrets Manager.
 
-Os itens essenciais de código estão concluídos. Restam smoke test/deploy e AWS Budgets na conta quando o uso AWS for autorizado. Depois, a próxima fase é observabilidade, descrita em [docs/ROADMAP.md](docs/ROADMAP.md).
+Os itens essenciais de código estão concluídos e os budgets mensais de US$50 e US$100 já existem com alertas. O EKS foi removido: o state Terraform conserva ECR e OIDC, mas não cluster, rede ou tabelas. Validar o deploy exige recriar infraestrutura com `terraform apply`, selecionar imagens publicadas e executar o smoke test. Isso cria recursos faturáveis. Depois dessa validação, começa a fase de observabilidade descrita em [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Licença
 

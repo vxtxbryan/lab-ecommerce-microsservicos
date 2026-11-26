@@ -41,4 +41,5 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 ## Fase 6: polimento
 - [x] README final com diagrama da arquitetura completa
 - [x] `Makefile` com `up`/`down` e referência de custos
-- [ ] AWS Budgets e evidências da validação final na conta (pendente de autorização para uso AWS)
+- [x] AWS Budgets mensais de US$50 e US$100 com alertas (já configurados)
+- [ ] Recriar EKS, validar deploy e smoke test; guardar evidências (recursos faturáveis)
