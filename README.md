@@ -497,7 +497,7 @@ flowchart LR
 
 - **Em pull requests**, a pipeline só faz build e scan, e **não toca na AWS**.
 - **No push para a `main`**, depois do scan, ela assume uma role da AWS e envia cada imagem ao ECR com o SHA completo do commit. O Helm usa essa mesma tag para implantar uma revisão específica.
-- **Sem a variável `AWS_ROLE_ARN`**, a CI mantém build, testes e scans, mas pula publicação no ECR e atualização do manifesto de release. Isso permite validar o repositório quando a infraestrutura AWS está desligada.
+- **Sem `AWS_PUBLISH_ENABLED=true`**, a CI mantém build, testes e scans, mas pula publicação no ECR e atualização do manifesto de release. Para habilitar publicação, configure essa variável e `AWS_ROLE_ARN` no GitHub. Isso evita chamadas AWS acidentais quando a infraestrutura está desligada.
 - **Trivy:** reprova em vulnerabilidades `HIGH` e `CRITICAL` que já tenham correção disponível (`ignore-unfixed`). A action do Trivy está fixada pelo **hash do commit** e não por tag, como proteção contra ataques à cadeia de suprimentos.
 
 ### Por que OIDC?
@@ -514,7 +514,7 @@ Em vez de guardar uma chave de acesso da AWS nos *secrets* do GitHub (que pode v
      ```
 
 2. Rode `terraform apply` e anote o output `github_actions_role_arn`.
-3. No GitHub, em *Settings → Secrets and variables → Actions → aba **Variables***, crie a variável `AWS_ROLE_ARN` com esse ARN. É uma *variable*, não um *secret*, porque o ARN não é sensível.
+3. No GitHub, em *Settings → Secrets and variables → Actions → aba **Variables***, crie `AWS_ROLE_ARN` com esse ARN e `AWS_PUBLISH_ENABLED` com valor `true`. São *variables*, não *secrets*, porque nenhum dos valores é sensível.
 4. Faça um push na `main` e acompanhe na aba *Actions*.
 
 ## Evidências do deploy
