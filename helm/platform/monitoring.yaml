@@ -1,0 +1,90 @@
+# Laboratório: volumes temporários, acesso apenas ClusterIP/port-forward.
+# Dados de métricas desaparecem quando o pod/cluster é removido.
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    nodeSelector: {workload: system}
+    tolerations: &systemTolerations
+      - key: CriticalAddonsOnly
+        operator: Exists
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {cpu: 200m, memory: 192Mi}
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: local
+      group_by: [alertname, namespace]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+    receivers:
+      - name: local
+# EKS não expõe estes componentes gerenciados para scrape direto.
+kubeEtcd: {enabled: false}
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeProxy: {enabled: false}
+defaultRules:
+  rules:
+    etcd: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeControllerManager: false
+prometheusOperator:
+  nodeSelector: {workload: system}
+  tolerations: *systemTolerations
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 384Mi}
+  admissionWebhooks:
+    patch:
+      nodeSelector: {workload: system}
+      tolerations: *systemTolerations
+prometheus:
+  prometheusSpec:
+    nodeSelector: {workload: system}
+    tolerations: *systemTolerations
+    retention: 12h
+    retentionSize: 1GB
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [default, monitoring, kube-system]
+    resources:
+      requests: {cpu: 250m, memory: 512Mi}
+      limits: {cpu: "1", memory: 1536Mi}
+grafana:
+  nodeSelector: {workload: system}
+  tolerations: *systemTolerations
+  persistence: {enabled: false}
+  service: {type: ClusterIP}
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 384Mi}
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: monitoring
+    resources:
+      requests: {cpu: 25m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 128Mi}
+kube-state-metrics:
+  nodeSelector: {workload: system}
+  tolerations: *systemTolerations
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 200m, memory: 192Mi}
+prometheus-node-exporter:
+  tolerations:
+    - operator: Exists
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 100m, memory: 128Mi}

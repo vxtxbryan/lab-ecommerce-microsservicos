@@ -382,7 +382,7 @@ kubectl get pods -w
 
 Para implantar uma revisão específica, execute `IMAGE_TAG=<SHA-publicado-no-ECR> make deploy`. A tag deve existir nos quatro repositórios.
 
-A CI propõe novos SHAs em helm/releases.yaml por pull request; revise e faça merge antes do deploy. Ative nas configurações Actions do GitHub a permissão para o GITHUB_TOKEN criar pull requests. O script combina os values de cada serviço com o output Terraform `service_helm_values` e instala no namespace `default`. Confira o contexto do kubectl antes de executar. Cada pod recebe o nome da sua tabela, a região e uma ServiceAccount associada à role correspondente. As tabelas usam cobrança por requisição. Um destroy completo exclui as tabelas e os dados do laboratório.
+A CI grava novos SHAs em uma branch de release e tenta abrir um PR. Quando a política do GitHub impede PRs automáticos, o resumo da execução contém o link para abri-lo manualmente e o manifesto é salvo como artifact. Revise e faça merge antes do deploy. O script combina os values de cada serviço com o output Terraform `service_helm_values` e instala no namespace `default`. Confira o contexto do kubectl antes de executar. Cada pod recebe o nome da sua tabela, a região e uma ServiceAccount associada à role correspondente. As tabelas usam cobrança por requisição. Um destroy completo exclui as tabelas e os dados do laboratório.
 
 Aguarde os 4 pods ficarem `1/1 Running` (cerca de 15 segundos) e saia com `Ctrl+C`. Confira também com `helm list` e `kubectl get svc`.
 
@@ -582,6 +582,10 @@ Somente a infraestrutura do subtotal, durante 2h, custa em torno de **US$ 0,65**
 | CI: `Not authorized to perform sts:AssumeRoleWithWebIdentity` | A trust policy da role não bate com o token. Confira o `sub` em [Usando a CI no seu fork](#usando-a-ci-no-seu-fork) (formato com IDs) e a variável `AWS_ROLE_ARN` |
 | CI: Trivy reprova a pipeline | Há uma vulnerabilidade `HIGH` ou `CRITICAL` com correção. O log mostra o pacote e a versão corrigida: atualize o `requirements.txt` ou a imagem base |
 | `terraform destroy` falha com `RepositoryNotEmpty` | O ECR ainda tem imagens. Use a Opção B do [passo 8](#8-desligar-tudo-para-parar-a-cobrança) |
+
+## Monitoramento
+
+Prometheus e Grafana cobrem métricas, dashboards e alertas. Logs JSON são consultados com `kubectl logs`. Instalação, consultas, limites e roteiro de apresentação estão em [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md). Logs centralizados e tracing ficam fora desta versão.
 
 ## Próximos passos
 

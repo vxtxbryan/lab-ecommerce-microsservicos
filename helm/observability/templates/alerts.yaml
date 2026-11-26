@@ -1,0 +1,47 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ecommerce
+  labels:
+    release: {{ .Values.prometheusRelease }}
+spec:
+  groups:
+    - name: ecommerce
+      rules:
+        - alert: EcommerceTargetDown
+          expr: up{namespace="default",service=~"products|orders|users|payments"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Prometheus não consegue coletar uma API"
+            description: "Verifique os pods, endpoints e o ServiceMonitor do serviço."
+        - alert: EcommerceDeploymentUnavailable
+          expr: kube_deployment_status_replicas_available{namespace="default",deployment=~"products|orders|users|payments"} < 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Uma API está sem réplicas disponíveis"
+            description: "Verifique rollout, eventos e logs do Deployment antes de reiniciar."
+        - alert: EcommerceHighErrorRate
+          expr: |
+            (sum by (service) (rate(ecommerce_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum by (service) (rate(ecommerce_http_requests_total[5m])), 0.001) > 0.05)
+            and on (service) (sum by (service) (increase(ecommerce_http_requests_total[5m])) > 20)
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Mais de 5% de respostas 5xx"
+            description: "Consulte logs JSON e disponibilidade das dependências; janela de 5 minutos com mais de 20 requisições."
+        - alert: EcommerceHighLatency
+          expr: |
+            (histogram_quantile(0.95, sum by (service, le) (rate(ecommerce_http_request_duration_seconds_bucket[5m]))) > 0.75)
+            and on (service) (sum by (service) (increase(ecommerce_http_requests_total[5m])) > 20)
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Latência p95 acima de 750ms"
+            description: "Verifique CPU, memória e latência das dependências; o limite é uma referência do laboratório."

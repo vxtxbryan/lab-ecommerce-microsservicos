@@ -20,7 +20,8 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 - [x] Correções no `orders` (status HTTP dos outros serviços, estoque)
 - [x] Testes automatizados (pytest)
 - [x] Dockerfiles não-root + `.dockerignore`
-- [ ] Instrumentação: `/metrics`, logs JSON e OpenTelemetry
+- [x] Instrumentação: `/metrics` e logs JSON de requisição
+- [ ] OpenTelemetry (evolução futura, fora do escopo atual)
 
 ## Fase 3: CI/CD e GitOps
 - [x] Chart Helm evoluído (ServiceAccount, Ingress, HPA, PDB, securityContext, ServiceMonitor opcionais)
@@ -35,8 +36,8 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 
 ## Fase 5: observabilidade
 - [ ] Prometheus + Grafana (kube-prometheus-stack) e dashboards
-- [ ] Loki + Grafana Alloy (logs)
-- [ ] OpenTelemetry Collector + Jaeger (tracing distribuído)
+- [ ] Loki + Grafana Alloy (evolução futura; logs atuais via kubectl)
+- [ ] OpenTelemetry Collector + Jaeger (evolução futura)
 
 ## Fase 6: polimento
 - [x] README final com diagrama da arquitetura completa

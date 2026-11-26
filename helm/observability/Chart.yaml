@@ -1,0 +1,5 @@
+apiVersion: v2
+name: ecommerce-observability
+description: Dashboard e alertas das APIs do laboratório
+type: application
+version: 0.1.0

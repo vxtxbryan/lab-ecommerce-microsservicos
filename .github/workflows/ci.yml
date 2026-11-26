@@ -207,10 +207,27 @@ jobs:
           BRANCH="codex/release-${IMAGE_TAG}"
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git checkout -B "$BRANCH"
-          git add helm/releases.yaml
-          git commit -m "chore: registrar imagens ${IMAGE_TAG}" || exit 0
-          git push origin "$BRANCH"
-          gh pr view "$BRANCH" >/dev/null 2>&1 || gh pr create --base main --head "$BRANCH" \
-            --title "chore: atualizar imagens ${IMAGE_TAG}" \
-            --body "Atualiza helm/releases.yaml com as imagens publicadas e verificadas para ${IMAGE_TAG}. Revise e faça merge para atualizar a versão aprovada para deploy."
+          if ! git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null; then
+            git checkout -b "$BRANCH"
+            git add helm/releases.yaml
+            git commit -m "chore: registrar imagens ${IMAGE_TAG}"
+            git push origin "$BRANCH"
+          fi
+          if ! gh pr view "$BRANCH" >/dev/null 2>&1; then
+            if ! gh pr create --base main --head "$BRANCH" \
+              --title "chore: atualizar imagens ${IMAGE_TAG}" \
+              --body "Imagens verificadas e publicadas para ${IMAGE_TAG}. Revise helm/releases.yaml antes do deploy manual." 2> /tmp/release-pr-error; then
+              if grep -q 'GitHub Actions is not permitted to create or approve pull requests' /tmp/release-pr-error; then
+                echo "::warning::A política do repositório exige abertura manual do PR de release."
+                echo "Versão publicada: ${IMAGE_TAG}. Abra o PR: https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}" >> "$GITHUB_STEP_SUMMARY"
+              else
+                cat /tmp/release-pr-error >&2
+                exit 1
+              fi
+            fi
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest
+          path: helm/releases.yaml
+          retention-days: 7

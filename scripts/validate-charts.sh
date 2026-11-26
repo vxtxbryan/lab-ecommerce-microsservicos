@@ -13,3 +13,5 @@ for service in products users orders payments; do
 done
 helm lint helm/karpenter-capacity --set cluster=validation,instanceProfile=validation
 helm template capacity helm/karpenter-capacity --set cluster=validation,instanceProfile=validation > "$output/capacity.yaml"
+helm lint helm/observability
+helm template ecommerce-observability helm/observability -n monitoring > "$output/observability.yaml"

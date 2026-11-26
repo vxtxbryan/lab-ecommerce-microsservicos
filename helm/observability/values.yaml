@@ -1,0 +1,2 @@
+# Deve coincidir com o release kube-prometheus-stack.
+prometheusRelease: monitoring

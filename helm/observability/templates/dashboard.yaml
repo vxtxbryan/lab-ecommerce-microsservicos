@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecommerce-dashboard
+  labels:
+    grafana_dashboard: "1"
+data:
+  ecommerce.json: |-
+{{ .Files.Get "dashboards/ecommerce.json" | indent 4 }}
