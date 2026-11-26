@@ -159,16 +159,16 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
 
-      # Daqui para baixo so roda em push na main (nao em pull requests)
+      # Publicação opcional: PRs e ambientes sem AWS_ROLE_ARN só fazem build/scan.
       - name: Autenticar na AWS (OIDC)
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && vars.AWS_ROLE_ARN != ''
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login no ECR
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && vars.AWS_ROLE_ARN != ''
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
@@ -188,7 +188,7 @@ jobs:
 
   record-release:
     needs: build-scan-push
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_ROLE_ARN != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
