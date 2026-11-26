@@ -592,14 +592,14 @@ Prometheus e Grafana cobrem métricas, dashboards e alertas. Logs JSON são cons
 Ideias para evoluir o projeto:
 
 - [ ] **GitOps com ArgoCD**: o cluster passa a se sincronizar com o repositório, em vez de `helm install` manual.
-- [ ] **Observabilidade** com Prometheus e Grafana: métricas dos pods e dos serviços.
+- [x] **Observabilidade** com Prometheus e Grafana: métricas das APIs e Kubernetes, dashboard e alertas; validação ponta a ponta no EKS permanece pendente.
 - [x] **Persistência e IRSA no EKS** validados com recriação dos pods e teste de acesso entre tabelas.
 - [x] **Ingress interno para orders** com AWS Load Balancer Controller e IRSA, validado pelo DNS do ALB dentro da VPC.
 - [x] **Endurecimento de segurança**: usuário não-root nos containers e `securityContext`; NetworkPolicy fica para expansão futura.
 - [x] **Executar pytest e validar Terraform e Helm na CI**, com scan de configuração.
 - [ ] **Gerenciamento de segredos** com External Secrets e AWS Secrets Manager.
 
-Os itens essenciais de código estão concluídos e os budgets mensais de US$50 e US$100 já existem com alertas. O EKS foi removido: o state Terraform conserva ECR e OIDC, mas não cluster, rede ou tabelas. Validar o deploy exige recriar infraestrutura com `terraform apply`, selecionar imagens publicadas e executar o smoke test. Isso cria recursos faturáveis. Depois dessa validação, começa a fase de observabilidade descrita em [docs/ROADMAP.md](docs/ROADMAP.md).
+Os itens essenciais de código estão concluídos e os budgets mensais de US$50 e US$100 já existem com alertas. O mantenedor removeu manualmente o EKS e os demais recursos AWS para evitar custos. Prometheus e Grafana estão implementados, com validação offline das regras na CI; a instalação foi tentada, mas a validação ponta a ponta no EKS permanece pendente. Recriá-lo é opcional e cria recursos faturáveis. Veja o estado e os limites das validações em [docs/ROADMAP.md](docs/ROADMAP.md) e o roteiro em [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
 
 ## Licença
 
