@@ -1,3 +1,4 @@
+from common.telemetry import configure_telemetry
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, PositiveInt
 from enum import Enum
@@ -9,6 +10,7 @@ import uuid
 import os
 
 app = FastAPI(title="Orders Service", version="1.0.0")
+configure_telemetry(app, "orders")
 
 orders_db = {}
 

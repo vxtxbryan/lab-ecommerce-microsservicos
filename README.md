@@ -242,7 +242,7 @@ Os serviços sobem em `localhost`: products `8000`, orders `8001`, users `8002` 
 
 Ele cria um usuário e um produto, faz um pedido e mostra a resposta. Se aparecer `"status": "confirmed"`, o fluxo completo funcionou. Um `"status": "payment_declined"` também é um resultado válido: é a recusa simulada de 10% do serviço `payments`. Se o script não tiver permissão de execução, rode `chmod +x scripts/*.sh`.
 
-Para verificar o cadastro concorrente, a disputa pela última unidade e a recuperação de um pagamento, com o Compose em execução e em um ambiente Python com as dependências de `services/orders/requirements.txt` e pytest, execute:
+Para verificar o cadastro concorrente, a disputa pela última unidade e a recuperação de um pagamento, com o Compose em execução e em um ambiente Python com as dependências de `services/orders/requirements.txt`, `common/requirements.txt` e pytest, execute:
 
 ```bash
 ORDERS_TEST_URL=http://localhost:8001 USERS_TEST_URL=http://localhost:8002 STOCK_TEST_URL=http://localhost:8000 PAYMENT_TEST_URL=http://localhost:8003 python -m pytest -q tests
@@ -600,3 +600,5 @@ Os itens essenciais de código estão concluídos e os budgets mensais de US$50 
 ## Licença
 
 Este projeto é distribuído sob a licença **MIT**: você pode usar, copiar e adaptar livremente, em estudos ou em trabalho. Veja o arquivo [LICENSE](LICENSE).
+
+As quatro APIs expõem `/metrics` (Prometheus) e logs JSON de requisição. O código compartilhado fica em `common/`; construa cada imagem a partir da raiz, por exemplo `docker build -f services/orders/Dockerfile .`. Rotas são registradas como templates, sem corpos, senhas ou cabeçalhos. A instrumentação não requer um coletor para iniciar.

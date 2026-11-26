@@ -7,7 +7,9 @@ services:
     networks: [lab-network]
 
   init-tables:
-    build: ./services/products
+    build:
+      context: .
+      dockerfile: services/products/Dockerfile
     command: python init_local.py
     restart: on-failure
     depends_on: [dynamodb]
@@ -25,11 +27,14 @@ services:
     depends_on:
       init-tables:
         condition: service_completed_successfully
-    build: ./services/products
+    build:
+      context: .
+      dockerfile: services/products/Dockerfile
     ports:
       - "8000:8000"
     volumes:
       - ./services/products:/app
+      - ./common:/app/common:ro
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     networks:
       - lab-network
@@ -41,11 +46,14 @@ services:
     depends_on:
       init-tables:
         condition: service_completed_successfully
-    build: ./services/users
+    build:
+      context: .
+      dockerfile: services/users/Dockerfile
     ports:
       - "8002:8002"
     volumes:
       - ./services/users:/app
+      - ./common:/app/common:ro
     command: uvicorn main:app --host 0.0.0.0 --port 8002 --reload
     networks:
       - lab-network
@@ -57,17 +65,22 @@ services:
     depends_on:
       init-tables:
         condition: service_completed_successfully
-    build: ./services/payments
+    build:
+      context: .
+      dockerfile: services/payments/Dockerfile
     ports:
       - "8003:8003"
     volumes:
       - ./services/payments:/app
+      - ./common:/app/common:ro
     command: uvicorn main:app --host 0.0.0.0 --port 8003 --reload
     networks:
       - lab-network
 
   orders:
-    build: ./services/orders
+    build:
+      context: .
+      dockerfile: services/orders/Dockerfile
     ports:
       - "8001:8001"
     environment:
@@ -78,6 +91,7 @@ services:
       PAYMENTS_SERVICE_URL: http://payments:8003
     volumes:
       - ./services/orders:/app
+      - ./common:/app/common:ro
     command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
     depends_on:
       - products

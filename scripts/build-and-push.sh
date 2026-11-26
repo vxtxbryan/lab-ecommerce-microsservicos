@@ -18,8 +18,12 @@ PROJECT_NAME="${PROJECT_NAME:-ecommerce-microsservicos}"
 AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-# Tag rastreavel: SHA curto do commit (ou "manual" fora de um repositorio git)
-GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo manual)"
+# Tag idêntica à CI. Publique apenas revisões commitadas.
+GIT_SHA="$(git rev-parse HEAD)"
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Faça commit das alterações antes de publicar imagens." >&2
+  exit 1
+fi
 
 SERVICES=("products" "orders" "users" "payments")
 
@@ -55,7 +59,7 @@ for SERVICE in "${SERVICES[@]}"; do
   REPO="${ECR_REGISTRY}/${IMAGE_NAME}"
 
   echo "Buildando imagem..."
-  docker build -t "${IMAGE_NAME}:${GIT_SHA}" "./services/${SERVICE}"
+  docker build -t "${IMAGE_NAME}:${GIT_SHA}" -f "services/${SERVICE}/Dockerfile" .
 
   echo "Aplicando tags para o ECR..."
   docker tag "${IMAGE_NAME}:${GIT_SHA}" "${REPO}:${GIT_SHA}"

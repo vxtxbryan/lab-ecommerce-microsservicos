@@ -1,3 +1,4 @@
+from common.telemetry import configure_telemetry
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from enum import Enum
@@ -9,6 +10,7 @@ import uuid
 import random
 
 app = FastAPI(title="Payments Service", version="1.0.0")
+configure_telemetry(app, "payments")
 
 payments_db = {}
 lock = Lock()

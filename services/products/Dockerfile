@@ -4,10 +4,12 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY services/products/requirements.txt .
+COPY common/requirements.txt /tmp/telemetry-requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -r /tmp/telemetry-requirements.txt
 
-COPY . .
+COPY services/products/ .
+COPY common/ /app/common/
 
 ENV PYTHONDONTWRITEBYTECODE=1
 USER 10001:10001

@@ -5,9 +5,13 @@ on:
     branches: [main]
     paths:
       - "services/**"
+      - "common/**"
+      - ".dockerignore"
+      - "Makefile"
       - "tests/**"
       - "infra/**"
       - "helm/**"
+      - "!helm/releases.yaml"
       - "scripts/**"
       - ".trivyignore.yaml"
       - "docker-compose.yml"
@@ -16,9 +20,13 @@ on:
     branches: [main]
     paths:
       - "services/**"
+      - "common/**"
+      - ".dockerignore"
+      - "Makefile"
       - "tests/**"
       - "infra/**"
       - "helm/**"
+      - "!helm/releases.yaml"
       - "scripts/**"
       - ".trivyignore.yaml"
       - "docker-compose.yml"
@@ -68,7 +76,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Instalar dependências dos testes
-        run: pip install -r services/orders/requirements.txt pytest
+        run: pip install -r services/orders/requirements.txt -r common/requirements.txt pytest
       - name: Subir serviços e aguardar APIs
         run: |
           docker compose up --build -d
@@ -128,7 +136,7 @@ jobs:
         run: |
           docker build \
             -t local/${{ matrix.service }}:${{ github.sha }} \
-            services/${{ matrix.service }}
+            -f services/${{ matrix.service }}/Dockerfile .
 
       # Pinada pelo hash do commit (v0.36.0): em 2026 tags desta action
       # foram comprometidos em um ataque a cadeia de suprimentos.
@@ -160,6 +168,11 @@ jobs:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
           REPO="${REGISTRY}/${PROJECT_NAME}-${{ matrix.service }}"
+          existing=$(aws ecr batch-get-image --repository-name "${PROJECT_NAME}-${{ matrix.service }}" --image-ids imageTag=${{ github.sha }} --query "images[0].imageId.imageTag" --output text)
+          if [[ "$existing" != None ]]; then
+            echo "SHA já publicado; preservando imagem imutável."
+            exit 0
+          fi
           docker tag local/${{ matrix.service }}:${{ github.sha }} "${REPO}:${{ github.sha }}"
           docker push "${REPO}:${{ github.sha }}"
 
@@ -191,13 +204,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          BRANCH="release/${IMAGE_TAG}"
+          BRANCH="codex/release-${IMAGE_TAG}"
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git checkout -B "$BRANCH"
           git add helm/releases.yaml
           git commit -m "chore: registrar imagens ${IMAGE_TAG}" || exit 0
-          git push --force origin "$BRANCH"
-          gh pr create --base main --head "$BRANCH" \
+          git push origin "$BRANCH"
+          gh pr view "$BRANCH" >/dev/null 2>&1 || gh pr create --base main --head "$BRANCH" \
             --title "chore: atualizar imagens ${IMAGE_TAG}" \
             --body "Atualiza helm/releases.yaml com as imagens publicadas e verificadas para ${IMAGE_TAG}. Revise e faça merge para atualizar a versão aprovada para deploy."

@@ -1,3 +1,4 @@
+from common.telemetry import configure_telemetry
 from decimal import Decimal
 import os
 from threading import Lock
@@ -9,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, PositiveInt
 
 app = FastAPI(title="Products Service", version="1.0.0")
+configure_telemetry(app, "products")
 products_db = {}
 reservation_receipts = {}
 lock = Lock()

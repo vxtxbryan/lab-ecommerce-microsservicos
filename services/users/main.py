@@ -1,3 +1,4 @@
+from common.telemetry import configure_telemetry
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
@@ -8,6 +9,7 @@ import uuid
 import boto3
 
 app = FastAPI(title="Users Service", version="1.0.0")
+configure_telemetry(app, "users")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
