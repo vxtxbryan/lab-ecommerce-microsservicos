@@ -1,12 +1,12 @@
-# Lab E-commerce de Microsserviços no AWS EKS
+# Laboratório de E-commerce com Microsserviços no Amazon EKS
 
 [![CI](https://github.com/vxtxbryan/lab-ecommerce-microsservicos/actions/workflows/ci.yml/badge.svg)](https://github.com/vxtxbryan/lab-ecommerce-microsservicos/actions/workflows/ci.yml)
 
-Laboratório prático de **cloud e DevOps**: quatro microsserviços de um e-commerce (Python/FastAPI) rodando em um cluster **Kubernetes na AWS (EKS)**, com infraestrutura criada por **Terraform**, deploy GitOps com **Argo CD e Helm** e uma pipeline de **CI no GitHub Actions** que faz build, varredura de vulnerabilidades com **Trivy** e envio das imagens para o **Amazon ECR**, autenticando na AWS por **OIDC** (sem chaves de acesso guardadas no GitHub).
+Laboratório prático de **cloud e DevOps**: quatro microsserviços de e-commerce (Python/FastAPI) em um cluster **Amazon EKS**, com infraestrutura criada por **Terraform**, entrega GitOps com **Argo CD e Helm** e uma pipeline de **CI no GitHub Actions** que compila as imagens, verifica vulnerabilidades com **Trivy** e, quando habilitada, publica no **Amazon ECR** usando **OIDC** (sem chaves de acesso armazenadas no GitHub).
 
 O objetivo é servir como material de estudo e como referência de um fluxo completo, do código até o cluster. Se você quer aprender como as peças se encaixam, ou precisa de um ponto de partida para um projeto parecido, pode clonar, rodar e adaptar.
 
-> **Aviso de custo:** subir o cluster na AWS **gera cobrança** (cerca de **US$ 0,32 por hora** nesta fase, e mais conforme a plataforma crescer). O passo a passo abaixo mostra como rodar tudo localmente de graça e como desligar a infraestrutura na nuvem assim que terminar. Veja a seção [Custos](#custos).
+> **Aviso de custo:** subir o cluster na AWS **gera cobrança** (a infraestrutura base custa cerca de **US$ 0,33 por hora**, além de ALB, tráfego e capacidade do Karpenter). O passo a passo abaixo mostra como rodar tudo localmente sem custos AWS e como destruir a infraestrutura na nuvem ao terminar. Veja a seção [Custos](#custos).
 
 ---
 
@@ -41,7 +41,7 @@ O objetivo é servir como material de estudo e como referência de um fluxo comp
 
 - **Infraestrutura como código** com Terraform: VPC, subnets, cluster EKS, node group, repositórios ECR e a role de acesso do GitHub Actions, com o state guardado em um bucket S3.
 - **Kubernetes na prática**: Deployments, Services, probes de liveness e readiness, limites de recursos e comunicação entre serviços por DNS interno.
-- **Helm**: um único chart genérico (`helm/microservice`) reaproveitado pelos 4 serviços, com um arquivo de valores por serviço.
+- **Helm**: um chart genérico (`helm/microservice`) compartilhado pelos quatro serviços, com um arquivo de valores para cada um.
 - **CI com segurança embutida**: build, varredura Trivy que reprova a pipeline em vulnerabilidades `HIGH` e `CRITICAL`, e push para o ECR.
 - **Autenticação sem segredos**: o GitHub Actions assume uma role da AWS por OIDC, restrita à branch `main` deste repositório.
 - **Microsserviços**: quatro APIs independentes, onde o serviço `orders` orquestra chamadas HTTP aos outros três.
@@ -69,7 +69,8 @@ A CI valida o código, publica imagens com SHA imutável e propõe a promoção 
 ```mermaid
 flowchart LR
     dev["Desenvolvedor<br/>git push"] --> gha["GitHub Actions<br/>build, Trivy, push"]
-    dev --> repo["GitHub<br/>PR de promoção"]
+    dev --> repo["GitHub<br/>main e PR de promoção"]
+    gha -->|"abre PR com os SHAs"| repo
 
     subgraph AWS["AWS - us-east-1"]
         ecr["Amazon ECR<br/>4 repositórios"]
@@ -89,8 +90,7 @@ flowchart LR
 
     gha -->|"OIDC: assume a role e envia as imagens"| ecr
     repo -.->|"reconcilia main"| argocd
-    argocd --> n1
-    argocd --> n2
+    argocd -->|"reconcilia recursos pela API"| cp
     ecr -.->|"pull das imagens"| n1
     ecr -.->|"pull das imagens"| n2
     cp --- n1
@@ -173,8 +173,11 @@ Se algum serviço estiver fora do ar, o `orders` responde `503`. Usuário ou pro
 │   ├── oidc.tf                  # Role que o GitHub Actions assume (OIDC)
 │   └── outputs.tf
 ├── scripts/
-│   ├── build-and-push.sh        # Build e push manual das imagens para o ECR
-│   └── test-order.sh            # Teste de ponta a ponta de um pedido
+│   ├── install-argocd.sh        # Instala Argo CD e inicia o app-of-apps
+│   ├── deploy-services.sh       # Deploy Helm manual (alternativa ao GitOps)
+│   ├── build-and-push.sh        # Build e publicação manual no ECR
+│   ├── test-order.sh            # Teste ponta a ponta de um pedido
+│   └── validate-gitops.sh       # Valida a configuração declarativa do Argo CD
 ├── services/
 │   ├── products/                # API de produtos  (porta 8000)
 │   ├── orders/                  # API de pedidos   (porta 8001)
@@ -213,6 +216,8 @@ Formas de pagamento aceitas: `credit_card`, `pix` e `boleto`.
 |---|---|---|
 | Git | Clonar o repositório | qualquer recente |
 | Docker (e Docker Compose) | Rodar localmente e buildar imagens | recente |
+| Python | Testes, scripts auxiliares e validação local | 3.12 |
+| PyYAML | Scripts de deploy e validação do GitOps | 6.0.3 |
 | Conta AWS | Criar a infraestrutura | com permissão administrativa para o laboratório |
 | AWS CLI v2 | Falar com a AWS | 2.x |
 | Terraform | Criar a infraestrutura | **1.10 ou superior** (o backend usa `use_lockfile`) |
@@ -225,7 +230,7 @@ Para a parte local (passo 1) você só precisa de Git e Docker.
 
 ## Passo a passo
 
-Atalhos: `make up` inicia o Compose; `make down` encerra sem apagar dados; `make test` executa pytest; `make validate` verifica Helm, Terraform, scripts e Compose; `make clean` remove também o volume local DynamoDB; `make deploy` instala os SHAs aprovados e requer kubeconfig.
+Atalhos: `make up` inicia o Compose; `make down` encerra sem apagar dados; `make test` executa pytest; `make validate` verifica Helm, Terraform, scripts e Compose; `make clean` remove também o volume local do DynamoDB; `make deploy` faz o deploy Helm manual e requer kubeconfig. Para GitOps, use `make gitops`.
 
 ```bash
 git clone https://github.com/vxtxbryan/lab-ecommerce-microsservicos.git
@@ -300,7 +305,14 @@ export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output tex
 sed -i "s/271251458777/$AWS_ACCOUNT_ID/g" helm/values/*.yaml
 ```
 
-**2.4 Decida se vai usar a CI do GitHub Actions.** O arquivo `infra/terraform/oidc.tf` cria a role usada pela pipeline e vem configurado para o repositório do autor.
+**2.4 Restrinja o endpoint público do EKS ao seu IP.** O valor padrão do laboratório permite qualquer origem; limite-o antes de aplicar:
+
+```bash
+MY_IP=$(curl -s https://checkip.amazonaws.com)
+echo "cluster_endpoint_public_access_cidrs = [\"${MY_IP}/32\"]" >> infra/terraform/terraform.tfvars
+```
+
+**2.5 Decida se vai usar a CI do GitHub Actions.** O arquivo `infra/terraform/oidc.tf` cria a role usada pela pipeline e vem configurado para o repositório do autor.
 
 - **Não vai usar a CI:** remova o arquivo antes do `terraform apply`:
 
@@ -325,7 +337,7 @@ terraform apply
 
 Leia o plano e confirme com `yes`. A criação leva de **15 a 20 minutos**, e a maior parte é a espera do cluster EKS e do node group. Se a conexão cair, rode `terraform apply` de novo, que ele continua de onde parou. Ao final, volte para a raiz com `cd ../..`.
 
-O que é criado: 1 VPC com 4 subnets e 1 NAT Gateway, o cluster EKS com addons (`vpc-cni`, `kube-proxy`, `coredns`, `aws-ebs-csi-driver`) e o node group de sistema, quatro tabelas DynamoDB com roles IRSA por serviço, 4 repositórios ECR (e a role OIDC, se você manteve o `oidc.tf`).
+O que é criado: uma VPC com quatro subnets e um NAT Gateway, o cluster EKS com os addons (`vpc-cni`, `kube-proxy`, `coredns` e `aws-ebs-csi-driver`), o node group de sistema, quatro tabelas DynamoDB com roles IRSA por serviço, quatro repositórios ECR e, se mantido `oidc.tf`, a role OIDC do GitHub Actions.
 
 ### 4. Enviar as imagens para o ECR
 
@@ -385,8 +397,6 @@ O pod exige o pool `workloads`. Quando ele é a única carga de aplicação, sua
 
 ### 6. Instalar os serviços com Argo CD
 
-Um release por serviço, com o chart genérico e o arquivo de valores de cada um. O **nome do release é o nome do Service**, e é por isso que `orders` consegue chamar `http://users`:
-
 Prepare a capacidade de aplicação e o Ingress antes de instalar os serviços. O bootstrap do Argo CD confere o endpoint do kubeconfig com o endpoint do Terraform, instala o chart oficial e cria a aplicação raiz, que acompanha a branch `main`:
 
 ```bash
@@ -397,7 +407,7 @@ kubectl get applications -n argocd
 kubectl get pods -w
 ```
 
-O app-of-apps cria um projeto restrito ao repositório e quatro Applications, uma por serviço. Elas usam o chart em `helm/microservice` e os respectivos arquivos `helm/values/*.yaml`. Cada uma sincroniza automaticamente no namespace `default`; alterações manuais nos recursos são corrigidas pelo Argo CD. A CI abre um PR com os SHAs completos das imagens publicadas. Revise e faça merge; o Argo CD aplica a versão aprovada sem um comando manual de Helm. Se a política do GitHub bloquear PRs automáticos, a execução informa o link para abri-lo.
+O app-of-apps cria um projeto restrito ao repositório e quatro Applications, uma por serviço. Cada aplicação usa o chart compartilhado em `helm/microservice`, mantém o nome do release igual ao nome do Service e carrega os valores correspondentes em `helm/values/*.yaml`. As aplicações sincronizam automaticamente no namespace `default`; alterações manuais nos recursos são corrigidas pelo Argo CD. A CI abre um PR com os SHAs completos das imagens publicadas. Revise e faça merge para aplicar a versão aprovada. Se a política do GitHub bloquear PRs automáticos, a execução informa o link para abri-lo.
 
 Para acessar a interface, use um port-forward. A senha inicial é gerada pelo Argo CD; troque-a depois do primeiro login:
 
@@ -406,9 +416,9 @@ kubectl port-forward -n argocd svc/argocd-server 8080:443
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
 ```
 
-O script aguarda as quatro aplicações ficarem sincronizadas e saudáveis. Cada pod recebe o nome de sua tabela, a região e uma ServiceAccount associada à role correspondente. As tabelas usam cobrança por requisição. Um destroy completo exclui as tabelas e os dados do laboratório.
+O script aguarda as quatro aplicações ficarem sincronizadas e saudáveis. Cada pod recebe o nome da própria tabela, a região e uma ServiceAccount associada à role correspondente. As tabelas usam cobrança por requisição. Um `terraform destroy` completo exclui as tabelas e os dados do laboratório.
 
-Aguarde os 4 pods ficarem `1/1 Running` (cerca de 15 segundos) e saia com `Ctrl+C`. Confira também com `helm list` e `kubectl get svc`.
+Confira os recursos com `kubectl get pods,svc` e os releases com `helm list -n default`.
 
 **Validação no EKS em 24/11/2026.** Com dois nodes Kubernetes 1.35.9 e os quatro serviços na revisão `6afd133`, um pedido de duas unidades foi aprovado e o estoque caiu de quatro para duas. Após `kubectl rollout restart` dos quatro Deployments, todos os pods tinham novos UIDs. Repetir o mesmo corpo e a mesma `Idempotency-Key` retornou os mesmos IDs de pedido e pagamento, e o saldo continuou em duas unidades. Dentro do pod de payments, o SDK usou credenciais de identidade web: `GetItem` encontrou o pagamento na tabela própria e recebeu `AccessDeniedException` na tabela de usuários.
 
@@ -464,10 +474,11 @@ O campo `payment_id` preenchido comprova que o `orders` falou com os outros trê
 
 ### 8. Desligar tudo para parar a cobrança
 
-Remova os serviços GitOps enquanto os controllers ainda estão disponíveis. `remove-gitops.sh` desativa a reconciliação automática de `orders`, remove o Ingress e aguarda a exclusão do ALB antes de remover as aplicações e o Argo CD. Na validação de 24/11/2026, consultar os ARNs de teste retornou `LoadBalancerNotFound` e `TargetGroupNotFound` enquanto o EKS ainda estava `ACTIVE`. Depois, remova o Karpenter:
+Remova os serviços GitOps enquanto os controllers ainda estão disponíveis. `remove-gitops.sh` desativa a reconciliação automática de `orders`, remove o Ingress e aguarda a exclusão do ALB antes de remover as aplicações e o Argo CD. Na validação de 24/11/2026, consultar os ARNs de teste retornou `LoadBalancerNotFound` e `TargetGroupNotFound` enquanto o EKS ainda estava `ACTIVE`. Depois, remova o monitoramento e o Karpenter:
 
 ```bash
 bash scripts/remove-gitops.sh
+bash scripts/remove-monitoring.sh
 bash scripts/remove-karpenter.sh
 ```
 
@@ -507,7 +518,7 @@ O scan de configuração bloqueia achados HIGH e CRITICAL. As exceções atuais 
 
 
 
-O workflow `.github/workflows/ci.yml` roda em cada `push` ou `pull request` que altere serviços, infraestrutura, charts, scripts, testes ou o próprio workflow. Build e scan de imagem ocorrem somente quando há alteração na aplicação (`services/**`, `common/**` ou `.dockerignore`), com um job por serviço em paralelo:
+O workflow `.github/workflows/ci.yml` roda em cada `push` ou `pull request` que altere serviços, código compartilhado, infraestrutura, charts, scripts, testes, `Makefile`, configuração do Trivy, Compose ou o próprio workflow. Build e scan de imagem ocorrem somente quando há alteração na aplicação (`services/**`, `common/**` ou `.dockerignore`), com um job por serviço em paralelo:
 
 ```mermaid
 flowchart LR
@@ -581,15 +592,16 @@ Valores aproximados na região `us-east-1` (confira a [calculadora de preços da
 
 | Recurso | Custo aproximado |
 |---|---|
-| Control plane do EKS | US$ 0,10 por hora (só em versão com suporte padrão; a estendida custa US$ 0,60) |
-| 2 nodes `t3.large` (sob demanda) | 2 × US$ 0,0832 por hora |
+| Control plane do EKS | US$ 0,10 por hora em versão com suporte padrão; US$ 0,60 em suporte estendido |
+| 2 nodes `t3.large` (sob demanda) | 2 × US$ 0,0835 por hora |
 | NAT Gateway | US$ 0,045 por hora + tráfego, e ~US$ 0,005 por hora do IPv4 público |
-| **Subtotal de EKS, dois nodes de sistema e NAT** | **cerca de US$ 0,32 por hora** |
+| Volumes gp3 dos nodes | 2 × 50 GB; cerca de US$ 8 por mês (US$ 0,011 por hora) |
+| **Subtotal de EKS, nodes, NAT, IPv4 e volumes** | **cerca de US$ 0,33 por hora** |
 | ALB interno | Cobrança por hora e por capacidade utilizada (LCU), adicional ao subtotal |
 | ECR (armazenamento das imagens) | centavos por mês; a política de retenção mantém só as 5 últimas imagens por repositório |
 | Bucket S3 do state | centavos por mês |
 
-Somente a infraestrutura do subtotal, durante 2h, custa em torno de **US$ 0,65**. Esquecer o cluster ligado pode custar quase US$ 8 por dia e cerca de US$ 230 por mês. Karpenter, ALB e observabilidade adicionam custos. Na conta deste laboratório existem budgets mensais de US$20, US$50 e US$100, com alertas em 85%, 100% e previsão acima de 100%. Consulte a [página AWS Budgets](https://console.aws.amazon.com/billing/home#/budgets) antes de iniciar recursos.
+Somente essa infraestrutura base, durante 2h, custa em torno de **US$ 0,66**. Mantida por um mês, fica perto de **US$ 240**, antes de tráfego, ALB, nós do Karpenter e armazenamento adicional. Os preços variam por região e podem mudar; consulte a [página de preços do EKS](https://aws.amazon.com/eks/pricing/), [EC2 T3](https://aws.amazon.com/ec2/instance-types/t3/), [VPC](https://aws.amazon.com/vpc/pricing/) e [EBS gp3](https://aws.amazon.com/ebs/pricing/). Na conta deste laboratório existem budgets mensais de US$20, US$50 e US$100, com alertas em 85%, 100% e previsão acima de 100%. Consulte a [página AWS Budgets](https://console.aws.amazon.com/billing/home#/budgets) antes de iniciar recursos.
 
 ## Problemas comuns
 
@@ -609,13 +621,13 @@ Somente a infraestrutura do subtotal, durante 2h, custa em torno de **US$ 0,65**
 
 ## Monitoramento
 
-Prometheus e Grafana cobrem métricas, dashboards e alertas. Logs JSON são consultados com `kubectl logs`. Instalação, consultas, limites e roteiro de apresentação estão em [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md). Logs centralizados e tracing ficam fora desta versão.
+As quatro APIs expõem `/metrics` para o Prometheus e registram logs JSON de requisição, consultáveis com `kubectl logs`. Rotas são registradas como templates, sem corpos, senhas ou cabeçalhos; a instrumentação não exige coletor para iniciar. Prometheus e Grafana cobrem métricas, dashboards e alertas. Instalação, consultas, limites e roteiro de apresentação estão em [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md). Logs centralizados e tracing ficam fora desta versão. O código compartilhado fica em `common/`; construa cada imagem a partir da raiz, por exemplo: `docker build -f services/orders/Dockerfile .`.
 
 ## Próximos passos
 
 Ideias para evoluir o projeto:
 
-- [x] **GitOps com Argo CD**: app-of-apps, projeto restrito, sincronização automática dos quatro serviços e promoção de imagens por PR; install em cluster pendente.
+- [x] **GitOps com Argo CD**: app-of-apps, projeto restrito, sincronização automática dos quatro serviços e promoção de imagens por PR; instalação em cluster pendente.
 - [x] **Observabilidade** com Prometheus e Grafana: métricas das APIs e Kubernetes, dashboard e alertas; validada em EKS temporário em 27/11/2026.
 - [x] **Persistência e IRSA no EKS** validados com recriação dos pods e teste de acesso entre tabelas.
 - [x] **Ingress interno para orders** com AWS Load Balancer Controller e IRSA, validado pelo DNS do ALB dentro da VPC.
@@ -628,5 +640,3 @@ Em 27/11/2026, recriamos o EKS temporariamente e validamos checkout, persistênc
 ## Licença
 
 Este projeto é distribuído sob a licença **MIT**: você pode usar, copiar e adaptar livremente, em estudos ou em trabalho. Veja o arquivo [LICENSE](LICENSE).
-
-As quatro APIs expõem `/metrics` (Prometheus) e logs JSON de requisição. O código compartilhado fica em `common/`; construa cada imagem a partir da raiz, por exemplo `docker build -f services/orders/Dockerfile .`. Rotas são registradas como templates, sem corpos, senhas ou cabeçalhos. A instrumentação não requer um coletor para iniciar.
