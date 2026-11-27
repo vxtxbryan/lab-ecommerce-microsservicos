@@ -1,6 +1,6 @@
 image:
   repository: 271251458777.dkr.ecr.us-east-1.amazonaws.com/ecommerce-microsservicos-users
-  tag: ""
+  tag: "ff955e788b7a5ba5d8b314940e0f92449655fb1a"
 containerPort: 8002
 serviceAccount:
   roleArn: arn:aws:iam::271251458777:role/ecommerce-microsservicos-users
