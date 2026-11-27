@@ -241,7 +241,7 @@ jobs:
           for name in ("products", "orders", "users", "payments"):
               path = Path(f"helm/values/{name}.yaml")
               content = path.read_text()
-              updated, count = re.subn(r'(?m)^(  tag: )""$', rf'\g<1>"{tag}"', content)
+              updated, count = re.subn(r'(?m)^(  tag: ).*$', rf'\g<1>"{tag}"', content)
               if count != 1:
                   raise SystemExit(f"Esperava exatamente uma tag vazia em {path}; encontrei {count}.")
               path.write_text(updated)
