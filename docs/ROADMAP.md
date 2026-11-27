@@ -3,7 +3,7 @@
 Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as caixas conforme cada fase for concluída.
 
 ## Fase 0: correções de base
-- [x] Kubernetes 1.35 (suporte padrão) e addons gerenciados (`vpc-cni`, `kube-proxy`, `coredns`, `aws-ebs-csi-driver`)
+- [x] Kubernetes 1.37 como versão padrão no próximo apply; EKS 1.35.9 e addons gerenciados foram usados na validação anterior
 - [x] Nodes em subnets privadas /20 + 1 NAT Gateway
 - [x] Node group de sistema `t3.large`
 - [x] Módulo local de IRSA (`infra/terraform/modules/irsa`) e IRSA do EBS CSI
@@ -28,10 +28,10 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 - [x] CI: pytest, `terraform fmt/validate`, validação Helm/scripts e `trivy config` antes da publicação; imagens com tag por SHA
 - [x] CI: build e publicação imutável; PR promove SHA para o GitOps
 - [x] ECR com tags imutáveis por SHA (sem `latest`)
-- [x] Argo CD com app-of-apps, projeto restrito e quatro aplicações (`gitops/`); validação em cluster pendente
+- [x] Argo CD com app-of-apps, projeto restrito e quatro aplicações (`gitops/`); sincronizado e validado no EKS em 27/11/2026
 
 ## Fase 4: segurança de runtime
-- [ ] External Secrets Operator + AWS Secrets Manager
+- [x] External Secrets Operator + AWS Secrets Manager configurados com IRSA limitado ao prefixo do projeto; validação de runtime pendente
 - [ ] cert-manager + Linkerd (mTLS entre serviços)
 
 ## Fase 5: observabilidade
@@ -56,4 +56,6 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 - Regras de alerta também passaram em `promtool` na CI. A CI validou Terraform, Helm, scripts, Trivy, build de imagens e testes do checkout sem publicar para AWS por padrão.
 - Após os testes, o EKS, VPC/NAT, ALB, nodes, tabelas e ECRs temporários foram removidos. A verificação final encontrou zero state Terraform e zero recursos temporários; permanecem os três budgets e o bucket S3 usado pelo backend remoto.
 - Os três budgets têm notificações ACTUAL em 85% e 100%, além de FORECASTED em 100%. Os limites são US$20, US$50 e US$100.
-- A configuração GitOps foi implementada após a validação de 27/11/2026. Argo CD não foi instalado porque o EKS foi destruído; a validação de runtime requer recriar a infraestrutura. External Secrets, mTLS, logs centralizados e tracing continuam como evoluções futuras.
+- Argo CD foi instalado no EKS temporário, sincronizou as quatro aplicações e foi removido durante a limpeza.
+- External Secrets Operator 2.15.0, compatível com Kubernetes 1.37, está configurado em Helm/Terraform/GitOps. A role IRSA só permite `DescribeSecret` e `GetSecretValue` sob o prefixo `ecommerce-microsservicos/*`. A AWS não foi recriada para essa etapa; a leitura real de segredo ainda requer teste em runtime.
+- mTLS, logs centralizados e tracing continuam como evoluções futuras.

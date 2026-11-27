@@ -7,6 +7,11 @@ crash.log
 # config local do backend (contem o nome do SEU bucket)
 infra/terraform/backend.hcl
 
+# Payloads de segredos locais; exemplos versionados usam a extensão .example
+*.secret.json
+*.secret.yaml
+*.secrets.json
+
 # Python
 __pycache__/
 *.pyc

@@ -1,5 +1,5 @@
 COMPOSE := docker compose
-.PHONY: up down test validate charts fmt deploy clean monitoring monitoring-test alerts-test gitops gitops-remove argocd
+.PHONY: up down test validate charts fmt deploy clean monitoring monitoring-test alerts-test gitops gitops-remove argocd external-secrets external-secrets-remove
 up:
 	$(COMPOSE) up --build -d
 down:
@@ -35,3 +35,9 @@ gitops:
 
 gitops-remove:
 	bash scripts/remove-gitops.sh
+
+external-secrets:
+	bash scripts/install-external-secrets.sh
+
+external-secrets-remove:
+	bash scripts/remove-external-secrets.sh

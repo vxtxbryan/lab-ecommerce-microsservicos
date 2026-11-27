@@ -44,6 +44,7 @@ O objetivo é servir como material de estudo e como referência de um fluxo comp
 - **Helm**: um chart genérico (`helm/microservice`) compartilhado pelos quatro serviços, com um arquivo de valores para cada um.
 - **CI com segurança embutida**: build, varredura Trivy que reprova a pipeline em vulnerabilidades `HIGH` e `CRITICAL`, e push para o ECR.
 - **Autenticação sem segredos**: o GitHub Actions assume uma role da AWS por OIDC, restrita à branch `main` deste repositório.
+- **Segredos no Kubernetes**: configuração do External Secrets Operator com IRSA restrito ao prefixo do projeto no AWS Secrets Manager; teste de runtime ainda pendente.
 - **Microsserviços**: quatro APIs independentes, onde o serviço `orders` orquestra chamadas HTTP aos outros três.
 
 ## Tecnologias
@@ -51,9 +52,10 @@ O objetivo é servir como material de estudo e como referência de um fluxo comp
 | Área | Ferramenta | Observação |
 |---|---|---|
 | Nuvem | AWS | Região `us-east-1` |
-| Orquestração | Amazon EKS (Kubernetes 1.35) | Node group de sistema: 2 nodes `t3.large` em subnets privadas |
+| Orquestração | Amazon EKS (Kubernetes 1.37 no próximo apply) | Node group de sistema: 2 nodes `t3.large` em subnets privadas |
 | IaC | Terraform ≥ 1.10 | Provider AWS `~> 5.0`; módulos `terraform-aws-modules/vpc` e `eks`, mais um módulo local de IRSA (`modules/irsa`) |
 | Deploy | Argo CD + Helm 3 | GitOps app-of-apps; chart compartilhado e values por serviço |
+| Segredos | External Secrets Operator + AWS Secrets Manager | IRSA sem chaves estáticas; integração configurada, runtime pendente |
 | Registro de imagens | Amazon ECR | 1 repositório por serviço, scan no push |
 | CI | GitHub Actions | Build, Trivy, push, OIDC |
 | Segurança | Trivy | Reprova em `HIGH` e `CRITICAL` com correção disponível |
@@ -75,8 +77,10 @@ flowchart LR
     subgraph AWS["AWS - us-east-1"]
         ecr["Amazon ECR<br/>4 repositórios"]
         s3["Bucket S3<br/>state do Terraform"]
-        cp["EKS control plane<br/>Kubernetes 1.35"]
+        cp["EKS control plane<br/>Kubernetes 1.37"]
         argocd["Argo CD<br/>app-of-apps + Helm"]
+        eso["External Secrets Operator<br/>IRSA"]
+        secrets["AWS Secrets Manager<br/>ecommerce-microsservicos/*"]
         subgraph VPC["VPC 10.0.0.0/16 - 2 zonas de disponibilidade"]
             subgraph PUB["Subnets públicas"]
                 nat["NAT Gateway<br/>único, compartilhado"]
@@ -91,6 +95,8 @@ flowchart LR
     gha -->|"OIDC: assume a role e envia as imagens"| ecr
     repo -.->|"reconcilia main"| argocd
     argocd -->|"reconcilia recursos pela API"| cp
+    secrets -->|"GetSecretValue via IRSA"| eso
+    eso -->|"sincroniza Secret"| cp
     ecr -.->|"pull das imagens"| n1
     ecr -.->|"pull das imagens"| n2
     cp --- n1
@@ -221,7 +227,7 @@ Formas de pagamento aceitas: `credit_card`, `pix` e `boleto`.
 | Conta AWS | Criar a infraestrutura | com permissão administrativa para o laboratório |
 | AWS CLI v2 | Falar com a AWS | 2.x |
 | Terraform | Criar a infraestrutura | **1.10 ou superior** (o backend usa `use_lockfile`) |
-| kubectl | Operar o cluster | compatível com o Kubernetes 1.35 |
+| kubectl | Operar o cluster | compatível com o Kubernetes 1.37 |
 | Helm | Instalar os serviços | 3.x |
 
 > **No Windows:** use o **WSL 2** (Ubuntu) e rode todos os comandos de dentro dele. No Docker Desktop, ative a integração com a distribuição WSL em *Settings → Resources → WSL integration*. Este projeto foi desenvolvido assim.
@@ -337,7 +343,7 @@ terraform apply
 
 Leia o plano e confirme com `yes`. A criação leva de **15 a 20 minutos**, e a maior parte é a espera do cluster EKS e do node group. Se a conexão cair, rode `terraform apply` de novo, que ele continua de onde parou. Ao final, volte para a raiz com `cd ../..`.
 
-O que é criado: uma VPC com quatro subnets e um NAT Gateway, o cluster EKS com os addons (`vpc-cni`, `kube-proxy`, `coredns` e `aws-ebs-csi-driver`), o node group de sistema, quatro tabelas DynamoDB com roles IRSA por serviço, quatro repositórios ECR e, se mantido `oidc.tf`, a role OIDC do GitHub Actions.
+O que é criado: uma VPC com quatro subnets e um NAT Gateway, o cluster EKS com os addons (`vpc-cni`, `kube-proxy`, `coredns` e `aws-ebs-csi-driver`), o node group de sistema, quatro tabelas DynamoDB com roles IRSA por serviço, quatro repositórios ECR, a role IRSA do External Secrets Operator (leitura limitada ao prefixo do projeto no Secrets Manager) e, se mantido `oidc.tf`, a role OIDC do GitHub Actions. O cluster usa Kubernetes 1.37 para manter compatibilidade com a versão suportada do External Secrets Operator.
 
 ### 4. Enviar as imagens para o ECR
 
@@ -397,15 +403,29 @@ O pod exige o pool `workloads`. Quando ele é a única carga de aplicação, sua
 
 ### 6. Instalar os serviços com Argo CD
 
-Prepare a capacidade de aplicação e o Ingress antes de instalar os serviços. O bootstrap do Argo CD confere o endpoint do kubeconfig com o endpoint do Terraform, instala o chart oficial e cria a aplicação raiz, que acompanha a branch `main`:
+Prepare a capacidade de aplicação, o Ingress e o External Secrets Operator antes de instalar os serviços. O operador usa IRSA e não requer chaves AWS armazenadas no cluster. A role só pode ler segredos cujo nome comece com `ecommerce-microsservicos/`; não existe segredo de exemplo criado na AWS. Instale o operador e depois o Argo CD:
 
 ```bash
 bash scripts/install-karpenter.sh
 bash scripts/install-alb-controller.sh
+bash scripts/install-external-secrets.sh
 make gitops
 kubectl get applications -n argocd
 kubectl get pods -w
 ```
+
+O Argo CD sincroniza `SecretStore/aws-secrets-manager` no namespace `default`. Esse recurso usa a identidade IRSA do controller e não contém credenciais. Para integrar um segredo real, crie-o manualmente no AWS Secrets Manager com nome sob `ecommerce-microsservicos/`, copie [o exemplo de ExternalSecret](examples/external-secrets/payments-api.yaml.example) para `gitops/apps/`, substitua o caminho e a propriedade pelos seus valores e faça commit. O ExternalSecret cria um Secret Kubernetes sem gravar seu conteúdo no Git. Para disponibilizá-lo ao container, inclua em `helm/values/<serviço>.yaml`:
+
+```yaml
+secretEnv:
+  - name: API_KEY
+    secretName: payments-api-credentials
+    secretKey: API_KEY
+```
+
+O chart injeta o valor como variável de ambiente no pod. O serviço precisa ler essa variável; o código atual não consome credenciais de terceiros. Nunca coloque valores secretos nos manifests, values ou exemplos versionados. Esta configuração foi validada localmente, mas a sincronização com AWS Secrets Manager não foi testada em runtime porque a infraestrutura está destruída.
+
+O fluxo de instalação, criação, rotação e remoção está descrito em [docs/EXTERNAL-SECRETS.md](docs/EXTERNAL-SECRETS.md).
 
 O app-of-apps cria um projeto restrito ao repositório e quatro Applications, uma por serviço. Cada aplicação usa o chart compartilhado em `helm/microservice`, mantém o nome do release igual ao nome do Service e carrega os valores correspondentes em `helm/values/*.yaml`. As aplicações sincronizam automaticamente no namespace `default`; alterações manuais nos recursos são corrigidas pelo Argo CD. A CI abre um PR com os SHAs completos das imagens publicadas. Revise e faça merge para aplicar a versão aprovada. Se a política do GitHub bloquear PRs automáticos, a execução informa o link para abri-lo.
 
@@ -479,6 +499,7 @@ Remova os serviços GitOps enquanto os controllers ainda estão disponíveis. `r
 ```bash
 bash scripts/remove-gitops.sh
 bash scripts/remove-monitoring.sh
+bash scripts/remove-external-secrets.sh
 bash scripts/remove-karpenter.sh
 ```
 
@@ -635,9 +656,9 @@ Ideias para evoluir o projeto:
 - [x] **Ingress interno para orders** com AWS Load Balancer Controller e IRSA, validado pelo DNS do ALB dentro da VPC.
 - [x] **Endurecimento de segurança**: usuário não-root nos containers e `securityContext`; NetworkPolicy fica para expansão futura.
 - [x] **Executar pytest e validar Terraform e Helm na CI**, com scan de configuração.
-- [ ] **Gerenciamento de segredos** com External Secrets e AWS Secrets Manager.
+- [x] **Configuração de segredos** com External Secrets, IRSA de menor privilégio, AWS Secrets Manager e SecretStore; validação de runtime pendente.
 
-Em 27/11/2026, recriamos o EKS temporariamente e validamos checkout, persistência DynamoDB/IRSA, Karpenter, ALB interno e Prometheus/Grafana; depois removemos os recursos de execução para evitar custos. A configuração GitOps está versionada, mas a instalação do Argo CD e a sincronização dos serviços ainda precisam de um cluster ativo. Permanecem os budgets e o bucket S3 do state, que têm ciclo de vida separado. Consulte [docs/ROADMAP.md](docs/ROADMAP.md) para resultados e limites, e [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) para instalação e demonstração.
+Em 27/11/2026, recriamos o EKS temporariamente e validamos checkout, persistência DynamoDB/IRSA, Karpenter, ALB interno, Argo CD, Prometheus e Grafana; depois removemos os recursos de execução para evitar custos. External Secrets, seu IAM/IRSA e os manifests estão configurados, mas a integração com Secrets Manager ainda requer validação em um cluster ativo. Permanecem os budgets e o bucket S3 do state, que têm ciclo de vida separado. Consulte [docs/ROADMAP.md](docs/ROADMAP.md) para resultados e limites, e [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) para instalação e demonstração.
 
 ## Licença
 

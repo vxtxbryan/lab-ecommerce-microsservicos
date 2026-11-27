@@ -28,3 +28,7 @@ spec:
       kind: Ingress
     - group: monitoring.coreos.com
       kind: ServiceMonitor
+    - group: external-secrets.io
+      kind: SecretStore
+    - group: external-secrets.io
+      kind: ExternalSecret

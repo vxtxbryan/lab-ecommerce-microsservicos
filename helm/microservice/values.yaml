@@ -24,6 +24,9 @@ service:
 
 env: {}
 
+# Referencie chaves criadas por ExternalSecret sem colocar valores confidenciais no Git.
+secretEnv: []
+
 probes:
   path: /health
 

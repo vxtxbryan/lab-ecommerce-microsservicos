@@ -27,6 +27,35 @@ project = load("gitops/apps/project.yaml")
 assert project["kind"] == "AppProject" and project["metadata"]["name"] == "ecommerce"
 assert project["spec"]["sourceRepos"] == [repo]
 assert project["spec"]["clusterResourceWhitelist"] == []
+allowed = {(item["group"], item["kind"]) for item in project["spec"]["namespaceResourceWhitelist"]}
+assert ("external-secrets.io", "SecretStore") in allowed
+assert ("external-secrets.io", "ExternalSecret") in allowed
+
+store = load("gitops/apps/secrets.yaml")
+assert store["apiVersion"] == "external-secrets.io/v1"
+assert store["kind"] == "SecretStore"
+assert store["metadata"]["namespace"] == "default"
+assert store["spec"]["provider"]["aws"]["service"] == "SecretsManager"
+assert store["spec"]["provider"]["aws"]["region"] == "us-east-1"
+assert "auth" not in store["spec"]["provider"]["aws"]
+
+example = load("examples/external-secrets/payments-api.yaml.example")
+assert example["kind"] == "ExternalSecret"
+assert example["spec"]["secretStoreRef"]["name"] == "aws-secrets-manager"
+assert example["spec"]["data"][0]["remoteRef"]["key"].startswith("ecommerce-microsservicos/")
+assert example["spec"]["target"]["deletionPolicy"] == "Retain"
+
+terraform = Path("infra/terraform/external-secrets.tf").read_text()
+assert '"secretsmanager:DescribeSecret", "secretsmanager:GetSecretValue"' in terraform
+assert 'secret:${var.project_name}/*' in terraform
+assert 'namespace          = "external-secrets"' in terraform
+assert 'service_account    = "external-secrets"' in terraform
+assert 'default     = "1.37"' in Path("infra/terraform/variables.tf").read_text()
+installer = Path("scripts/install-external-secrets.sh").read_text()
+assert "--version 2.15.0" in installer
+assert "--server-side" in installer
+assert '[[ "$version" != "1.37" ]]' in installer
+assert 'installCRDs=false' in installer
 
 for service in services:
     app = load(f"gitops/apps/{service}.yaml")
@@ -51,5 +80,5 @@ for service in services:
     assert values_file["env"].get(f"{service.upper()}_TABLE")
     assert values_file["serviceMonitor"]["enabled"] is True
 
-print("Configuração GitOps validada para root app, projeto e quatro serviços.")
+print("Configuração GitOps, SecretStore, exemplo ExternalSecret e integração IRSA validados.")
 PY

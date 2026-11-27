@@ -11,6 +11,9 @@ on:
       - "tests/**"
       - "infra/**"
       - "helm/**"
+      - "gitops/**"
+      - "examples/**"
+      - "docs/**"
       - "scripts/**"
       - ".trivyignore.yaml"
       - "docker-compose.yml"
@@ -25,6 +28,9 @@ on:
       - "tests/**"
       - "infra/**"
       - "helm/**"
+      - "gitops/**"
+      - "examples/**"
+      - "docs/**"
       - "scripts/**"
       - ".trivyignore.yaml"
       - "docker-compose.yml"
@@ -88,12 +94,12 @@ jobs:
           terraform -chdir=infra/terraform validate
       - name: Validar charts e scripts
         run: |
+          python3 -m pip install PyYAML==6.0.3
           bash scripts/validate-charts.sh /tmp/rendered
           for script in scripts/*.sh; do bash -n "$script"; done
           docker compose config --quiet
       - name: Validar regras de alertas
         run: |
-          python3 -m pip install PyYAML==6.0.3
           bash scripts/test-alerts.sh
           bash scripts/validate-gitops.sh
       - name: Trivy configuração

@@ -13,7 +13,7 @@ variable "project_name" {
 variable "cluster_version" {
   description = "Versao do Kubernetes no EKS. Use sempre uma versao em suporte padrao (a estendida custa 6x mais no control plane)."
   type        = string
-  default     = "1.35"
+  default     = "1.37"
 }
 
 variable "cluster_endpoint_public_access_cidrs" {
