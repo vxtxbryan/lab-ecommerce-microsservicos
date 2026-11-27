@@ -474,7 +474,7 @@ O campo `payment_id` preenchido comprova que o `orders` falou com os outros trê
 
 ### 8. Desligar tudo para parar a cobrança
 
-Remova os serviços GitOps enquanto os controllers ainda estão disponíveis. `remove-gitops.sh` desativa a reconciliação automática de `orders`, remove o Ingress e aguarda a exclusão do ALB antes de remover as aplicações e o Argo CD. Na validação de 24/11/2026, consultar os ARNs de teste retornou `LoadBalancerNotFound` e `TargetGroupNotFound` enquanto o EKS ainda estava `ACTIVE`. Depois, remova o monitoramento e o Karpenter:
+Remova os serviços GitOps enquanto os controllers ainda estão disponíveis. `remove-gitops.sh` desativa a reconciliação automática de `orders`, remove o Ingress e aguarda a exclusão do ALB. Em seguida, remove primeiro as quatro Applications e só depois o AppProject e o Argo CD, para que os finalizadores ainda encontrem o projeto. Depois, remova o monitoramento e o Karpenter:
 
 ```bash
 bash scripts/remove-gitops.sh
@@ -507,6 +507,8 @@ done
 cd infra/terraform
 terraform destroy
 ```
+
+O state remoto fica vazio após o `destroy`. O bucket S3 que armazena o state, os budgets da conta e suas notificações são independentes e permanecem ativos.
 
 O bucket S3 do state **não** é apagado pelo `destroy`. Para removê-lo: `aws s3 rb s3://$TF_BUCKET --force`.
 

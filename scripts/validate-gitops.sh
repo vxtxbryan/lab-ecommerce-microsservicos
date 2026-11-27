@@ -21,6 +21,7 @@ assert root["spec"]["source"]["targetRevision"] == "main"
 assert root["spec"]["source"]["path"] == "gitops/apps"
 assert root["spec"]["source"]["directory"]["recurse"] is True
 assert root["spec"]["syncPolicy"]["automated"]["prune"] is True
+assert root["spec"]["syncPolicy"]["syncOptions"] == ["PruneLast=true"]
 
 project = load("gitops/apps/project.yaml")
 assert project["kind"] == "AppProject" and project["metadata"]["name"] == "ecommerce"
@@ -41,6 +42,7 @@ for service in services:
     assert chart["helm"]["valueFiles"] == [f"$values/helm/values/{service}.yaml"]
     assert spec["destination"]["namespace"] == "default"
     assert spec["syncPolicy"]["automated"]["prune"] is True
+    assert spec["syncPolicy"]["syncOptions"] == ["PruneLast=true"]
 
     values_file = load(f"helm/values/{service}.yaml")
     tag = values_file["image"]["tag"]
