@@ -7,3 +7,5 @@ serviceAccount:
 env:
   AWS_DEFAULT_REGION: us-east-1
   PRODUCTS_TABLE: ecommerce-microsservicos-products
+serviceMonitor:
+  enabled: true

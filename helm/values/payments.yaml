@@ -7,3 +7,5 @@ serviceAccount:
 env:
   AWS_DEFAULT_REGION: us-east-1
   PAYMENTS_TABLE: ecommerce-microsservicos-payments
+serviceMonitor:
+  enabled: true

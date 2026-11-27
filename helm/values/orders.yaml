@@ -10,6 +10,8 @@ env:
   PRODUCTS_SERVICE_URL: http://products
   USERS_SERVICE_URL: http://users
   PAYMENTS_SERVICE_URL: http://payments
+serviceMonitor:
+  enabled: true
 ingress:
   enabled: true
   path: /orders

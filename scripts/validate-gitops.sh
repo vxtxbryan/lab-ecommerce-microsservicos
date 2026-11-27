@@ -47,6 +47,7 @@ for service in services:
     assert tag == "" or re.fullmatch(r"[0-9a-f]{40}", tag)
     assert values_file["serviceAccount"]["roleArn"].startswith("arn:aws:iam::")
     assert values_file["env"].get(f"{service.upper()}_TABLE")
+    assert values_file["serviceMonitor"]["enabled"] is True
 
 print("Configuração GitOps validada para root app, projeto e quatro serviços.")
 PY
