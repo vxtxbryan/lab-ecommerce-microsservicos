@@ -7,6 +7,18 @@ import httpx
 
 base = 'http://monitoring-kube-prometheus-prometheus.monitoring:9090'
 with httpx.Client(timeout=15) as client:
+    # /health e /metrics são excluídos da instrumentação; gere tráfego somente de leitura.
+    probes = (
+        'http://orders/orders',
+        'http://users/users',
+        'http://products/products',
+        'http://payments/payments/observability-probe',
+    )
+    for url in probes:
+        response = client.get(url)
+        if response.status_code >= 500:
+            raise SystemExit(f'Requisição de observabilidade falhou: {url} -> {response.status_code}')
+
     deadline = time.monotonic() + 180
     while True:
         response = client.get(base + '/api/v1/targets')
@@ -24,7 +36,8 @@ with httpx.Client(timeout=15) as client:
                 and {'products', 'orders', 'users', 'payments'} <= names):
             break
         if time.monotonic() >= deadline:
-            raise SystemExit(f'Prometheus sem quatro targets saudáveis e métricas: targets={apis}, métricas={names}')
+            health = {name: apis.get(name, {}).get('health') for name in ('products', 'orders', 'users', 'payments')}
+            raise SystemExit(f'Prometheus sem quatro targets saudáveis e métricas: targets={health}, métricas={names}')
         time.sleep(5)
     rules = client.get(base + '/api/v1/rules').json()['data']['groups']
     names = {rule['name'] for group in rules for rule in group['rules']}
