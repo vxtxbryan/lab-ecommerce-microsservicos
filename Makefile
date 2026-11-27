@@ -1,5 +1,5 @@
 COMPOSE := docker compose
-.PHONY: up down test validate charts fmt deploy clean monitoring monitoring-test alerts-test
+.PHONY: up down test validate charts fmt deploy clean monitoring monitoring-test alerts-test gitops gitops-remove argocd
 up:
 	$(COMPOSE) up --build -d
 down:
@@ -26,3 +26,12 @@ monitoring-test:
 
 alerts-test:
 	bash scripts/test-alerts.sh
+
+argocd:
+	bash scripts/install-argocd.sh
+
+gitops:
+	bash scripts/install-argocd.sh
+
+gitops-remove:
+	bash scripts/remove-gitops.sh

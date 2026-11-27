@@ -26,9 +26,9 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 ## Fase 3: CI/CD e GitOps
 - [x] Chart Helm evoluído (ServiceAccount, Ingress, HPA, PDB, securityContext, ServiceMonitor opcionais)
 - [x] CI: pytest, `terraform fmt/validate`, validação Helm/scripts e `trivy config` antes da publicação; imagens com tag por SHA
-- [x] CI: PR de release com SHA; deploy permanece manual
+- [x] CI: build e publicação imutável; PR promove SHA para o GitOps
 - [x] ECR com tags imutáveis por SHA (sem `latest`)
-- [ ] ArgoCD com app-of-apps (`gitops/`)
+- [x] Argo CD com app-of-apps, projeto restrito e quatro aplicações (`gitops/`); validação em cluster pendente
 
 ## Fase 4: segurança de runtime
 - [ ] External Secrets Operator + AWS Secrets Manager
@@ -56,4 +56,4 @@ Plataforma de microsserviços em EKS com GitOps e observabilidade. Marque as cai
 - Regras de alerta também passaram em `promtool` na CI. A CI validou Terraform, Helm, scripts, Trivy, build de imagens e testes do checkout sem publicar para AWS por padrão.
 - Após os testes, o EKS, VPC/NAT, ALB, nodes, tabelas e ECRs temporários foram removidos. A verificação final encontrou zero state Terraform e zero recursos temporários; permanecem os três budgets e o bucket S3 usado pelo backend remoto.
 - Os três budgets têm notificações ACTUAL em 85% e 100%, além de FORECASTED em 100%. Os limites são US$20, US$50 e US$100.
-- GitOps/ArgoCD, External Secrets, mTLS, logs centralizados e tracing continuam sendo evoluções opcionais, não bloqueios para a entrega atual.
+- A configuração GitOps foi implementada após a validação de 27/11/2026. Argo CD não foi instalado porque o EKS foi destruído; a validação de runtime requer recriar a infraestrutura. External Secrets, mTLS, logs centralizados e tracing continuam como evoluções futuras.

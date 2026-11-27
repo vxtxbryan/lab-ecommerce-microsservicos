@@ -7,11 +7,13 @@ import json, os, re
 import yaml
 services = ('products', 'users', 'payments', 'orders')
 provided = os.getenv('IMAGE_TAG')
-with open('helm/releases.yaml') as file:
-    versions = yaml.safe_load(file)
-tags = {service: provided or versions.get(service) for service in services}
+tags = {}
+for service in services:
+    with open(f'helm/values/{service}.yaml') as file:
+        values = yaml.safe_load(file)
+    tags[service] = provided or values.get('image', {}).get('tag')
 if any(not isinstance(tag, str) or not re.fullmatch(r'[0-9a-f]{40}', tag) for tag in tags.values()):
-    raise SystemExit('Defina IMAGE_TAG ou helm/releases.yaml com SHAs completos publicados no ECR.')
+    raise SystemExit('Defina IMAGE_TAG ou os SHAs completos em helm/values/*.yaml.')
 print(json.dumps(tags))
 PY
 )

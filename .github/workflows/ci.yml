@@ -11,7 +11,6 @@ on:
       - "tests/**"
       - "infra/**"
       - "helm/**"
-      - "!helm/releases.yaml"
       - "scripts/**"
       - ".trivyignore.yaml"
       - "docker-compose.yml"
@@ -26,7 +25,6 @@ on:
       - "tests/**"
       - "infra/**"
       - "helm/**"
-      - "!helm/releases.yaml"
       - "scripts/**"
       - ".trivyignore.yaml"
       - "docker-compose.yml"
@@ -41,6 +39,37 @@ env:
   PROJECT_NAME: ecommerce-microsservicos
 
 jobs:
+  detect-application-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base="$BEFORE_SHA"
+          if [[ "$EVENT_NAME" == pull_request ]]; then base="$PR_BASE_SHA"; fi
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "$base" "$HEAD_SHA" | grep -Eq '^(services/|common/|\.dockerignore$)'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   configuration:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -66,6 +95,7 @@ jobs:
         run: |
           python3 -m pip install PyYAML==6.0.3
           bash scripts/test-alerts.sh
+          bash scripts/validate-gitops.sh
       - name: Trivy configuração
         run: |
           docker run --rm -v "$PWD:/src:ro" -v /tmp/rendered:/rendered:ro -w /src aquasec/trivy:0.76.2 config --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml --skip-dirs .git --skip-dirs helm --skip-dirs infra/terraform/.terraform .
@@ -127,7 +157,8 @@ jobs:
         run: docker compose down --volumes
 
   build-scan-push:
-    needs: [tests, configuration]
+    needs: [tests, configuration, detect-application-changes]
+    if: needs.detect-application-changes.outputs.changed == 'true'
     name: ${{ matrix.service }}
     runs-on: ubuntu-latest
     permissions:
@@ -197,17 +228,23 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Registrar SHA publicado para deploy manual
+      - name: Preparar promoção GitOps
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           python - <<'PY'
           import os
+          import re
           from pathlib import Path
 
-          path = Path("helm/releases.yaml")
-          services = ("products", "orders", "users", "payments")
-          path.write_text("".join(f"{name}: {os.environ['IMAGE_TAG']}\n" for name in services))
+          tag = os.environ["IMAGE_TAG"]
+          for name in ("products", "orders", "users", "payments"):
+              path = Path(f"helm/values/{name}.yaml")
+              content = path.read_text()
+              updated, count = re.subn(r'(?m)^(  tag: )""$', rf'\g<1>"{tag}"', content)
+              if count != 1:
+                  raise SystemExit(f"Esperava exatamente uma tag vazia em {path}; encontrei {count}.")
+              path.write_text(updated)
           PY
       - name: Abrir PR da versão
         env:
@@ -219,14 +256,14 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           if ! git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null; then
             git checkout -b "$BRANCH"
-            git add helm/releases.yaml
-            git commit -m "chore: registrar imagens ${IMAGE_TAG}"
+            git add helm/values/*.yaml
+            git commit -m "chore: propor imagens ${IMAGE_TAG} para GitOps"
             git push origin "$BRANCH"
           fi
           if ! gh pr view "$BRANCH" >/dev/null 2>&1; then
             if ! gh pr create --base main --head "$BRANCH" \
-              --title "chore: atualizar imagens ${IMAGE_TAG}" \
-              --body "Imagens verificadas e publicadas para ${IMAGE_TAG}. Revise helm/releases.yaml antes do deploy manual." 2> /tmp/release-pr-error; then
+              --title "chore: promover imagens ${IMAGE_TAG} via GitOps" \
+              --body "Imagens verificadas e publicadas para ${IMAGE_TAG}. Revise os SHAs em helm/values/*.yaml. Após o merge, o Argo CD sincroniza os quatro serviços automaticamente." 2> /tmp/release-pr-error; then
               if grep -q 'GitHub Actions is not permitted to create or approve pull requests' /tmp/release-pr-error; then
                 echo "::warning::A política do repositório exige abertura manual do PR de release."
                 echo "Versão publicada: ${IMAGE_TAG}. Abra o PR: https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}" >> "$GITHUB_STEP_SUMMARY"
@@ -239,5 +276,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: release-manifest
-          path: helm/releases.yaml
+          path: helm/values/*.yaml
           retention-days: 7

@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ecommerce
+  namespace: argocd
+spec:
+  description: Aplicações do laboratório de e-commerce
+  sourceRepos:
+    - https://github.com/vxtxbryan/lab-ecommerce-microsservicos.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: default
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: apps
+      kind: Deployment
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor

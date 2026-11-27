@@ -1,0 +1,23 @@
+global:
+  nodeSelector:
+    workload: system
+  tolerations:
+    - key: CriticalAddonsOnly
+      operator: Exists
+
+controller:
+  replicas: 1
+
+repoServer:
+  replicas: 1
+
+server:
+  replicas: 1
+  service:
+    type: ClusterIP
+
+applicationSet:
+  replicas: 1
+
+redis-ha:
+  enabled: false

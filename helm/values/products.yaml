@@ -1,3 +1,9 @@
 image:
   repository: 271251458777.dkr.ecr.us-east-1.amazonaws.com/ecommerce-microsservicos-products
+  tag: ""
 containerPort: 8000
+serviceAccount:
+  roleArn: arn:aws:iam::271251458777:role/ecommerce-microsservicos-products
+env:
+  AWS_DEFAULT_REGION: us-east-1
+  PRODUCTS_TABLE: ecommerce-microsservicos-products

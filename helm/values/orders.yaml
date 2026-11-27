@@ -1,7 +1,12 @@
 image:
   repository: 271251458777.dkr.ecr.us-east-1.amazonaws.com/ecommerce-microsservicos-orders
+  tag: ""
 containerPort: 8001
+serviceAccount:
+  roleArn: arn:aws:iam::271251458777:role/ecommerce-microsservicos-orders
 env:
+  AWS_DEFAULT_REGION: us-east-1
+  ORDERS_TABLE: ecommerce-microsservicos-orders
   PRODUCTS_SERVICE_URL: http://products
   USERS_SERVICE_URL: http://users
   PAYMENTS_SERVICE_URL: http://payments
