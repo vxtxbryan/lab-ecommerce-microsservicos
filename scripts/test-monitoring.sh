@@ -14,18 +14,18 @@ with httpx.Client(timeout=15) as client:
         targets = response.json()['data']['activeTargets']
         apis = {t['labels'].get('service'): t for t in targets
                 if t['labels'].get('namespace') == 'default'}
-        if all(name in apis and apis[name]['health'] == 'up'
-               for name in ('products', 'orders', 'users', 'payments')):
+        response = client.get(base + '/api/v1/query', params={
+            'query': 'sum by (service) (ecommerce_http_requests_total)'
+        })
+        response.raise_for_status()
+        names = {item['metric']['service'] for item in response.json()['data']['result']}
+        if (all(name in apis and apis[name]['health'] == 'up'
+                for name in ('products', 'orders', 'users', 'payments'))
+                and {'products', 'orders', 'users', 'payments'} <= names):
             break
         if time.monotonic() >= deadline:
-            raise SystemExit('Prometheus não encontrou as quatro APIs saudáveis')
+            raise SystemExit(f'Prometheus sem quatro targets saudáveis e métricas: targets={apis}, métricas={names}')
         time.sleep(5)
-    response = client.get(base + '/api/v1/query', params={
-        'query': 'sum by (service) (ecommerce_http_requests_total)'
-    })
-    response.raise_for_status()
-    names = {item['metric']['service'] for item in response.json()['data']['result']}
-    assert {'products', 'orders', 'users', 'payments'} <= names, names
     rules = client.get(base + '/api/v1/rules').json()['data']['groups']
     names = {rule['name'] for group in rules for rule in group['rules']}
     assert {'EcommerceTargetDown', 'EcommerceDeploymentUnavailable',
